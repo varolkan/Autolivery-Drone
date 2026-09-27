@@ -126,8 +126,8 @@ public:
     autolivery_core::AvoidFn avoid;
     if (avoidance_.enabled) {
       avoid = [this](const Vec3 & position, const Vec3 & desired) {
-        return avoider_->compute(position, desired, activeObstacles(), city_.world.get());
-      };
+          return avoider_->compute(position, desired, activeObstacles(), city_.world.get());
+        };
     }
     mission_ = std::make_unique<Mission>(
       profile_, mission_config, city_.world, route_planner_->asPlanFn(), avoid);
@@ -516,16 +516,16 @@ private:
     last_request_["mission"] = t;
     using WP = mavros_msgs::msg::Waypoint;
     const auto item = [this](uint16_t command, const Vec3 & where) {
-      WP wp;
-      wp.frame = WP::FRAME_GLOBAL_REL_ALT;    // altitude above home, i.e. the depot
-      wp.command = command;
-      wp.autocontinue = true;
-      const Vec3 geo = worldToGeodetic(city_.origin, where);
-      wp.x_lat = geo.x;
-      wp.y_long = geo.y;
-      wp.z_alt = where.z - depot_.z;
-      return wp;
-    };
+        WP wp;
+        wp.frame = WP::FRAME_GLOBAL_REL_ALT;  // altitude above home, i.e. the depot
+        wp.command = command;
+        wp.autocontinue = true;
+        const Vec3 geo = worldToGeodetic(city_.origin, where);
+        wp.x_lat = geo.x;
+        wp.y_long = geo.y;
+        wp.z_alt = where.z - depot_.z;
+        return wp;
+      };
     constexpr uint16_t kDoLandStart = 189;
     constexpr uint16_t kNavLoiterToAlt = 31;
     constexpr uint16_t kNavLand = 21;

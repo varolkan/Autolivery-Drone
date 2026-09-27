@@ -95,28 +95,28 @@ AvoidanceResult VelocityObstacleAvoider::compute(
   const double speed_factors[] = {1.0, 0.6, 0.3};
 
   auto consider = [&](const Vec3 & raw) {
-    const Vec3 v = clampVelocity(
+      const Vec3 v = clampVelocity(
       raw, params_.max_horizontal_speed, params_.max_climb_rate, params_.max_descent_rate);
-    if (params_.min_speed > 0.0 && v.horizontalNorm() < params_.min_speed) {
-      return;
-    }
-    if (!staticallyClear(position, v, map)) {
-      return;
-    }
-    const double margin = separationMargin(position, v, obstacles, nullptr);
-    double escape = std::numeric_limits<double>::infinity();
-    for (const auto & o : obstacles) {
-      const Vec3 later = o.position + o.velocity * 1.0 - (position + v * 1.0);
-      escape = std::min(
+      if (params_.min_speed > 0.0 && v.horizontalNorm() < params_.min_speed) {
+        return;
+      }
+      if (!staticallyClear(position, v, map)) {
+        return;
+      }
+      const double margin = separationMargin(position, v, obstacles, nullptr);
+      double escape = std::numeric_limits<double>::infinity();
+      for (const auto & o : obstacles) {
+        const Vec3 later = o.position + o.velocity * 1.0 - (position + v * 1.0);
+        escape = std::min(
         escape, later.norm() - (o.radius + params_.vehicle_radius + params_.safety_margin));
-    }
-    const Vec3 dv = v - desired;
+      }
+      const Vec3 dv = v - desired;
     // Normalised deviation from the request; vertical deviation costs a bit more because
     // leaving the planned altitude band takes the vehicle out of deconflicted airspace.
-    const double scale = std::max(1.0, params_.max_horizontal_speed);
-    const double cost = (dv.x * dv.x + dv.y * dv.y + 1.5 * dv.z * dv.z) / (scale * scale);
-    candidates.push_back({v, cost, margin, escape});
-  };
+      const double scale = std::max(1.0, params_.max_horizontal_speed);
+      const double cost = (dv.x * dv.x + dv.y * dv.y + 1.5 * dv.z * dv.z) / (scale * scale);
+      candidates.push_back({v, cost, margin, escape});
+    };
 
   for (int i = -n; i <= n; ++i) {
     const double heading = base_heading + max_turn * static_cast<double>(i) / n;

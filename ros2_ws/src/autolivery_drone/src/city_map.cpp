@@ -109,19 +109,19 @@ CityMap loadCityMap(const std::string & path)
     }
 
     auto resolve = [&](const std::string & kind, const std::string & name, Vec3 p) {
-      if (std::isnan(p.z)) {
-        p.z = city.world->groundHeight(p.x, p.y);
-      }
-      if (!city.world->inBounds(p)) {
-        throw MapError(path, kind + " '" + name + "' is outside the geofence");
-      }
+        if (std::isnan(p.z)) {
+          p.z = city.world->groundHeight(p.x, p.y);
+        }
+        if (!city.world->inBounds(p)) {
+          throw MapError(path, kind + " '" + name + "' is outside the geofence");
+        }
       // Standing on a surface is fine; being inside a building or no-fly zone is not.
-      const Vec3 above = p + Vec3{0.0, 0.0, 0.5};
-      if (city.world->isBlocked(above, 0.0)) {
-        throw MapError(path, kind + " '" + name + "' is inside an obstacle or no-fly zone");
-      }
-      return p;
-    };
+        const Vec3 above = p + Vec3{0.0, 0.0, 0.5};
+        if (city.world->isBlocked(above, 0.0)) {
+          throw MapError(path, kind + " '" + name + "' is inside an obstacle or no-fly zone");
+        }
+        return p;
+      };
 
     if (!root["depots"] || root["depots"].size() == 0) {
       throw MapError(path, "at least one depot is required");

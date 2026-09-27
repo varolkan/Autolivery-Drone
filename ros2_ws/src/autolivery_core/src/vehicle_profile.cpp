@@ -81,10 +81,10 @@ std::vector<std::string> validate(const VehicleProfile & p)
 {
   std::vector<std::string> problems;
   auto positive = [&](double v, const char * name) {
-    if (!(v > 0.0) || !std::isfinite(v)) {
-      problems.push_back(std::string(name) + " must be positive");
-    }
-  };
+      if (!(v > 0.0) || !std::isfinite(v)) {
+        problems.push_back(std::string(name) + " must be positive");
+      }
+    };
   positive(p.cruise_speed, "cruise_speed");
   positive(p.max_speed, "max_speed");
   positive(p.max_climb_rate, "max_climb_rate");

@@ -169,14 +169,14 @@ private:
     busy_ = true;
     const auto cmds = autolivery_core::gripperCommands(gripper_, action);
     auto done = [this, header, srv, release](bool ok, const std::string & msg) {
-      busy_ = false;
-      deadline_.reset();
-      if (ok && !sensed_) {
+        busy_ = false;
+        deadline_.reset();
+        if (ok && !sensed_) {
         // No sensor: the best we can say is that the autopilot accepted the command.
-        setState(release ? PayloadMsg::RELEASED : PayloadMsg::ATTACHED, false);
-      }
-      respond(srv, header, ok, msg);
-    };
+          setState(release ? PayloadMsg::RELEASED : PayloadMsg::ATTACHED, false);
+        }
+        respond(srv, header, ok, msg);
+      };
     // One deadline for the whole sequence; a lost MAVLink ack must not wedge the gripper.
     deadline_ = create_wall_timer(
       std::chrono::duration<double>(command_timeout_ * static_cast<double>(cmds.size())),

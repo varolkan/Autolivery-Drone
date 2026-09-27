@@ -103,16 +103,16 @@ private:
     int id = 0;
     auto box = [&](const std::string & ns, const autolivery_core::Box & b, float r, float g,
       float bl, float a) {
-      Marker m = base(ns, id++, Marker::CUBE);
-      const Vec3 c = (b.min + b.max) * 0.5;
-      m.pose.position = toPoint(c);
-      m.scale = toVector3(b.max - b.min);
-      m.color.r = r;
-      m.color.g = g;
-      m.color.b = bl;
-      m.color.a = a;
-      arr.markers.push_back(m);
-    };
+        Marker m = base(ns, id++, Marker::CUBE);
+        const Vec3 c = (b.min + b.max) * 0.5;
+        m.pose.position = toPoint(c);
+        m.scale = toVector3(b.max - b.min);
+        m.color.r = r;
+        m.color.g = g;
+        m.color.b = bl;
+        m.color.a = a;
+        arr.markers.push_back(m);
+      };
     for (const auto & b : city_.world->buildings()) {
       box("buildings", b, 0.62f, 0.64f, 0.68f, 1.0f);
     }
@@ -132,22 +132,22 @@ private:
     }
     auto pad = [&](const std::string & ns, const std::string & name, const Vec3 & p, float r,
       float g, float b) {
-      Marker m = base(ns, id++, Marker::CYLINDER);
-      m.pose.position = toPoint(p + Vec3{0.0, 0.0, 0.05});
-      m.scale.x = m.scale.y = 4.0;
-      m.scale.z = 0.1;
-      m.color.r = r;
-      m.color.g = g;
-      m.color.b = b;
-      m.color.a = 1.0f;
-      arr.markers.push_back(m);
-      Marker t = base(ns + "_labels", id++, Marker::TEXT_VIEW_FACING);
-      t.pose.position = toPoint(p + Vec3{0.0, 0.0, 4.0});
-      t.scale.z = 3.0;
-      t.color.r = t.color.g = t.color.b = t.color.a = 1.0f;
-      t.text = name;
-      arr.markers.push_back(t);
-    };
+        Marker m = base(ns, id++, Marker::CYLINDER);
+        m.pose.position = toPoint(p + Vec3{0.0, 0.0, 0.05});
+        m.scale.x = m.scale.y = 4.0;
+        m.scale.z = 0.1;
+        m.color.r = r;
+        m.color.g = g;
+        m.color.b = b;
+        m.color.a = 1.0f;
+        arr.markers.push_back(m);
+        Marker t = base(ns + "_labels", id++, Marker::TEXT_VIEW_FACING);
+        t.pose.position = toPoint(p + Vec3{0.0, 0.0, 4.0});
+        t.scale.z = 3.0;
+        t.color.r = t.color.g = t.color.b = t.color.a = 1.0f;
+        t.text = name;
+        arr.markers.push_back(t);
+      };
     for (const auto & [name, p] : city_.depots) {
       pad("depots", name, p, 0.1f, 0.4f, 0.9f);
     }

@@ -42,7 +42,7 @@ bool segmentHitsBox(const Vec3 & a, const Vec3 & b, const Box & box, double c)
   double t_exit = 1.0;
   for (int axis = 0; axis < 3; ++axis) {
     if (std::abs(dir[axis]) < 1e-12) {
-      if (origin[axis]<lo[axis] || origin[axis]> hi[axis]) {
+      if (origin[axis] < lo[axis] || origin[axis] > hi[axis]) {
         return false;
       }
       continue;
@@ -235,15 +235,15 @@ std::vector<std::string> WorldMap::validate() const
       "geofence is empty: min " + describe(bounds_min_) + " max " + describe(bounds_max_));
   }
   auto check_box = [&](const Box & b, const char * kind) {
-    if (b.min.x >= b.max.x || b.min.y >= b.max.y || b.min.z >= b.max.z) {
-      problems.push_back(
+      if (b.min.x >= b.max.x || b.min.y >= b.max.y || b.min.z >= b.max.z) {
+        problems.push_back(
         std::string(kind) + " '" + b.name + "' has min " + describe(b.min) + " not below max " +
         describe(b.max));
-    }
-    if (!b.min.isFinite() || !b.max.isFinite()) {
-      problems.push_back(std::string(kind) + " '" + b.name + "' has non-finite corners");
-    }
-  };
+      }
+      if (!b.min.isFinite() || !b.max.isFinite()) {
+        problems.push_back(std::string(kind) + " '" + b.name + "' has non-finite corners");
+      }
+    };
   for (const auto & b : buildings_) {
     check_box(b, "building");
   }

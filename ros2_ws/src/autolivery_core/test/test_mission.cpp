@@ -234,13 +234,13 @@ TEST_F(MissionTest, FixedWingWithoutARouteHomeUsesRtlThenLands)
   auto inner = autolivery_test::makePlanner(city, profile.planning_clearance);
   bool planner_broken = false;
   auto planner = [&](const Vec3 & a, const Vec3 & b) {
-    if (planner_broken) {
-      PlanResult r;
-      r.message = "planner offline";
-      return r;
-    }
-    return inner(a, b);
-  };
+      if (planner_broken) {
+        PlanResult r;
+        r.message = "planner offline";
+        return r;
+      }
+      return inner(a, b);
+    };
   Mission mission(profile, config(), city, planner);
   FakeVehicle vehicle(profile, autolivery_test::kHome, city);
   vehicle.runway_heading = kPi;
@@ -294,8 +294,8 @@ TEST_F(MissionTest, RefusesDeliveriesItCannotFly)
   const auto snap = vehicle.snapshot();
 
   auto has = [](const std::string & text, const std::string & word) {
-    return text.find(word) != std::string::npos;
-  };
+      return text.find(word) != std::string::npos;
+    };
   EXPECT_TRUE(has(mission.start({autolivery_test::kInsideHospital, "x"}, snap, 0.0), "blocked"));
   EXPECT_TRUE(has(mission.start({{900.0, 0.0, 0.0}, "x"}, snap, 0.0), "geofence"));
   EXPECT_TRUE(has(mission.start({{55.0, 50.0, 0.0}, "x"}, snap, 0.0), "below the surface"));
@@ -536,8 +536,8 @@ TEST_F(MissionTest, AvoidsHeadOnTrafficAndStillDelivers)
     }
   } traffic;
   auto avoid = [&](const Vec3 & pos, const Vec3 & desired) {
-    return avoider.compute(pos, desired, {traffic.at()}, city.get());
-  };
+      return avoider.compute(pos, desired, {traffic.at()}, city.get());
+    };
 
   Mission mission = makeMission(profile, city, config(), avoid);
   FakeVehicle vehicle(profile, autolivery_test::kHome, city);

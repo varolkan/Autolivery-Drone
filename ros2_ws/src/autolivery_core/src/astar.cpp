@@ -62,10 +62,10 @@ PlanResult AStarPlanner::plan(const Vec3 & start, const Vec3 & goal) const
   const auto t0 = std::chrono::steady_clock::now();
   PlanResult result;
   auto finish = [&](PlanResult & r) -> PlanResult {
-    r.planning_time =
-      std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-    return r;
-  };
+      r.planning_time =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+      return r;
+    };
 
   const VoxelGrid & grid = *grid_;
   const GridIndex start_raw = grid.toIndex(start);
@@ -95,11 +95,11 @@ PlanResult AStarPlanner::plan(const Vec3 & start, const Vec3 & goal) const
   const std::size_t goal_flat = grid.flatten(*goal_idx);
   const GridIndex g_idx = *goal_idx;
   auto heuristic = [&](const GridIndex & i) {
-    const double dx = i.x - g_idx.x;
-    const double dy = i.y - g_idx.y;
-    const double dz = i.z - g_idx.z;
-    return res * std::sqrt(dx * dx + dy * dy + k * k * dz * dz);
-  };
+      const double dx = i.x - g_idx.x;
+      const double dy = i.y - g_idx.y;
+      const double dz = i.z - g_idx.z;
+      return res * std::sqrt(dx * dx + dy * dy + k * k * dz * dz);
+    };
 
   // Dense per-cell arrays: a few MB at planning resolutions and much faster than hashing.
   constexpr std::uint32_t kNoParent = std::numeric_limits<std::uint32_t>::max();

@@ -58,8 +58,8 @@ PlanResult RrtStarPlanner::plan(const Vec3 & start, const Vec3 & goal) const
 {
   const auto t0 = std::chrono::steady_clock::now();
   auto elapsed = [&]() {
-    return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-  };
+      return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    };
   PlanResult result;
   const WorldMap & map = *map_;
   const double c = params_.clearance;
