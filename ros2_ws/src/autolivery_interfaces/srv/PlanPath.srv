@@ -1,0 +1,11 @@
+# Plan (but do not fly) a route between two world-frame points.
+geometry_msgs/Point start
+geometry_msgs/Point goal
+# astar | rrt_star | empty for the node's default
+string planner
+---
+bool success
+string message
+nav_msgs/Path path
+float64 length
+float64 planning_time

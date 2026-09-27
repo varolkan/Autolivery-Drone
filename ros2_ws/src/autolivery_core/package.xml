@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>autolivery_core</name>
+  <version>1.0.0</version>
+  <description>
+    ROS-independent core of the Autolivery delivery drone: world map, A* and RRT* planners,
+    path smoothing, velocity-obstacle avoidance, vehicle profiles, gripper commands and the
+    delivery mission state machine.
+  </description>
+  <maintainer email="148723216+varolkan@users.noreply.github.com">varolkan</maintainer>
+  <license>All rights reserved</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>ament_cmake_cpplint</test_depend>
+  <test_depend>ament_cmake_uncrustify</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -1,0 +1,8 @@
+# Gazebo DetachableJoint, via ros_gz_bridge. Reports its own state, so the mission can trust it.
+/**:
+  ros__parameters:
+    gripper:
+      type: simulated
+      release_time: 1.0
+    mission:
+      payload_feedback: true

@@ -1,0 +1,90 @@
+# Urban delivery district.
+#
+# This file is the single source of truth for the city: the mission planner flies against
+# it, and autolivery_gazebo's generate_world.py builds the Gazebo world from it. Edit here,
+# then regenerate the world (the gazebo package has a test that fails if they drift apart).
+#
+# World frame: ENU, metres, origin at the main depot pad. `origin` pins it to the globe and
+# must match <spherical_coordinates> in the Gazebo world so PX4's GPS agrees with the map.
+#
+# Shapes:
+#   buildings / no_fly_zones   axis-aligned boxes, min/max corners
+#   cylinders                  vertical, base centre + radius + height (trees, masts)
+# Locations are named dropoffs. Give [x, y] to drop on whatever surface is there (a roof
+# counts), or [x, y, z] to pin the surface height explicitly.
+
+name: urban_delivery
+
+origin:
+  latitude: 47.397971
+  longitude: 8.546164
+  altitude: 488.0
+
+geofence:
+  min: [-600.0, -150.0, 0.0]
+  max: [320.0, 300.0, 120.0]
+
+depots:
+  main: [0.0, 0.0, 0.0]            # multirotor and VTOL pad
+  airstrip: [-560.0, 0.0, 0.0]     # fixed-wing runway threshold, runway heading east
+
+# Fixed-wing landing patterns, one per depot that planes return to. mission_node uploads each
+# as a PX4 mission landing (DO_LAND_START, loiter down to the approach altitude, straight-in
+# NAV_LAND), which PX4 flies whenever the plane returns home (RTL_TYPE 1). Keep the glide
+# slope (approach_altitude over approach_distance) under the airframe's FW_LND_ANG.
+runways:
+  airstrip:
+    touchdown: [-450.0, 0.0]
+    landing_heading: 270.0         # direction of the landing roll, degrees from north
+    approach_distance: 350.0       # metres from the loiter-down point to touchdown
+    approach_altitude: 40.0        # metres above the depot
+    loiter_radius: 60.0
+
+locations:
+  rooftop_cafe: [110.0, 107.5]     # on the mall roof, 18 m
+  park: [120.0, 175.0]
+  house_backyard: [180.0, 190.0]
+  warehouse_dock: [215.0, 78.0]
+  hotel_roof: [155.0, 50.0]        # 55 m roof, above cruise altitude
+  farm: [-450.0, 250.0]            # long leg over open country, for VTOL/fixed-wing
+
+buildings:
+  - {name: office_tower,   min: [40.0, 30.0, 0.0],    max: [70.0, 70.0, 75.0]}
+  - {name: apartments_a,   min: [90.0, 30.0, 0.0],    max: [120.0, 60.0, 28.0]}
+  - {name: hotel,          min: [140.0, 30.0, 0.0],   max: [170.0, 70.0, 55.0]}
+  - {name: warehouse,      min: [190.0, 30.0, 0.0],   max: [240.0, 60.0, 12.0]}
+  - {name: apartments_b,   min: [40.0, 90.0, 0.0],    max: [65.0, 130.0, 32.0]}
+  - {name: mall,           min: [85.0, 90.0, 0.0],    max: [135.0, 125.0, 18.0]}
+  - {name: bank_tower,     min: [150.0, 95.0, 0.0],   max: [175.0, 125.0, 90.0]}
+  - {name: house_1,        min: [195.0, 90.0, 0.0],   max: [215.0, 105.0, 8.0]}
+  - {name: house_2,        min: [225.0, 95.0, 0.0],   max: [240.0, 110.0, 9.0]}
+  - {name: parking_garage, min: [40.0, -60.0, 0.0],   max: [80.0, -25.0, 15.0]}
+  - {name: office_block,   min: [100.0, -55.0, 0.0],  max: [125.0, -20.0, 45.0]}
+  - {name: hospital,       min: [150.0, -70.0, 0.0],  max: [190.0, -30.0, 25.0]}
+  - {name: school,         min: [215.0, -60.0, 0.0],  max: [245.0, -30.0, 14.0]}
+  - {name: residences,     min: [40.0, 155.0, 0.0],   max: [75.0, 190.0, 22.0]}
+  - {name: townhouses,     min: [170.0, 160.0, 0.0],  max: [190.0, 175.0, 7.0]}
+  - {name: glass_tower,    min: [210.0, 150.0, 0.0],  max: [240.0, 190.0, 65.0]}
+  - {name: farmhouse,      min: [-470.0, 215.0, 0.0], max: [-455.0, 230.0, 6.0]}
+
+cylinders:
+  - {name: radio_mast,    base: [130.0, 5.0, 0.0],   radius: 1.5, height: 70.0}
+  - {name: park_tree_1,   base: [100.0, 160.0, 0.0], radius: 3.0, height: 10.0}
+  - {name: park_tree_2,   base: [135.0, 165.0, 0.0], radius: 3.5, height: 12.0}
+  - {name: park_tree_3,   base: [110.0, 195.0, 0.0], radius: 3.0, height: 9.0}
+  - {name: park_tree_4,   base: [145.0, 190.0, 0.0], radius: 3.0, height: 11.0}
+  - {name: street_tree_1, base: [30.0, 80.0, 0.0],   radius: 2.0, height: 8.0}
+  - {name: street_tree_2, base: [80.0, 80.0, 0.0],   radius: 2.0, height: 8.0}
+  - {name: street_tree_3, base: [140.0, 80.0, 0.0],  radius: 2.0, height: 8.0}
+  - {name: street_tree_4, base: [180.0, 80.0, 0.0],  radius: 2.0, height: 8.0}
+
+no_fly_zones:
+  - {name: hospital_helipad, min: [145.0, -80.0, 0.0], max: [200.0, -20.0, 120.0]}
+
+# Other aircraft in the simulated world. Not part of the planner's map: the vehicle only
+# learns about them at run time, through /autolivery/obstacles, like it would via ADS-B.
+traffic:
+  - name: survey_drone
+    radius: 1.0
+    speed: 4.0
+    waypoints: [[20.0, -10.0, 40.0], [20.0, 140.0, 40.0]]

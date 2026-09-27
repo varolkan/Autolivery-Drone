@@ -1,0 +1,10 @@
+# PX4 payload deliverer (PD_GRIPPER_EN=1, gripper output mapped to "Gripper").
+# MAV_CMD_DO_GRIPPER. No sensor by default: confirmation is by timing.
+/**:
+  ros__parameters:
+    gripper:
+      type: mavlink_gripper
+      instance: 1
+      release_time: 2.0
+    mission:
+      payload_feedback: false

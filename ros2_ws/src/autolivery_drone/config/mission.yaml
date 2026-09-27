@@ -1,0 +1,49 @@
+# Mission, planner and avoidance settings shared by every vehicle. Vehicle- and
+# gripper-specific values live in vehicles/ and grippers/.
+/**:
+  ros__parameters:
+    map_file: maps/urban_delivery.yaml
+    mission:
+      offboard_warmup: 1.5
+      position_tolerance: 1.0
+      altitude_tolerance: 0.8
+      settle_speed: 0.5
+      settle_time: 2.0
+      lookahead: 8.0
+      release_retry_period: 4.0
+      release_timeout: 20.0
+      battery_return: 0.30
+      battery_land: 0.15
+      battery_min_start: 0.60
+      vtol_transition_margin: 150.0
+      air_drop_approach: 200.0
+      air_drop_overrun: 150.0
+      air_drop_latency: 0.25
+      air_drop_max_cross_track: 10.0
+      air_drop_attempts: 2
+      preflight_timeout: 90.0
+      takeoff_timeout: 90.0
+      descend_timeout: 60.0
+      land_timeout: 240.0
+      leg_timeout_factor: 2.5
+      leg_timeout_margin: 60.0
+    planner:
+      algorithm: astar
+      resolution: 2.0
+      climb_cost: 1.5
+      max_segment: 0.0
+      rrt_max_iterations: 4000
+      rrt_max_time: 1.0
+      rrt_step: 10.0
+      rrt_goal_bias: 0.1
+      rrt_rewire_radius: 25.0
+      rrt_min_altitude: 10.0
+      rrt_max_altitude: 110.0
+    avoidance:
+      enabled: true
+      obstacle_timeout: 1.0
+      time_horizon: 8.0
+      safety_margin: 3.0
+      heading_samples: 12
+      static_clearance: 1.5
+      static_horizon: 3.0

@@ -1,0 +1,23 @@
+# Deliver the parcel currently in the gripper and fly back to the depot.
+#
+# Either name a location from the city map...
+string location
+# ...or give an explicit dropoff point in the world frame (used when `location` is empty).
+# z is the height of the surface the parcel ends up on.
+geometry_msgs/Point dropoff
+# Replace dropoff.z with the surface height from the city map (roofs, ground).
+bool snap_to_surface
+---
+bool success
+bool delivered
+string message
+float64 flight_time
+float64 distance_flown
+---
+string state
+string detail
+string leg
+float64 leg_remaining
+uint32 waypoint
+uint32 waypoint_count
+bool avoiding

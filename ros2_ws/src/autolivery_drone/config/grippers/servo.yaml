@@ -1,0 +1,12 @@
+# Servo claw on a PX4 output set to "Peripheral via Actuator Set 1".
+# MAV_CMD_DO_SET_ACTUATOR; values are normalised [-1, 1] across the output's PWM range.
+/**:
+  ros__parameters:
+    gripper:
+      type: servo
+      actuator: 1
+      grab_value: 1.0
+      release_value: -1.0
+      release_time: 1.5
+    mission:
+      payload_feedback: false

@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>autolivery_gazebo</name>
+  <version>1.0.0</version>
+  <description>
+    Gazebo (Harmonic) simulation for the Autolivery delivery drone: the urban world generated
+    from the city map, PX4 vehicle models with a detachable parcel, simulated air traffic,
+    and the launch file that runs it all with PX4 SITL.
+  </description>
+  <maintainer email="148723216+varolkan@users.noreply.github.com">varolkan</maintainer>
+  <license>All rights reserved</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <depend>autolivery_drone</depend>
+  <depend>autolivery_interfaces</depend>
+  <depend>gz_msgs_vendor</depend>
+  <depend>gz_transport_vendor</depend>
+  <depend>rclcpp</depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+
+  <test_depend>ament_cmake_flake8</test_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
+  <test_depend>ament_cmake_cpplint</test_depend>
+  <test_depend>ament_cmake_uncrustify</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

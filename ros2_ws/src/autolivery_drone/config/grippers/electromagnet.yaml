@@ -1,0 +1,13 @@
+# Electromagnet switched through a PX4 output ("Peripheral via Actuator Set 2") driving a
+# MOSFET. Energised holds. A reed switch on payload_node's payload_sensor_topic makes
+# release confirmation sensor-based; without one set payload_feedback false.
+/**:
+  ros__parameters:
+    gripper:
+      type: electromagnet
+      actuator: 2
+      grab_value: 1.0
+      release_value: -1.0
+      release_time: 2.0
+    mission:
+      payload_feedback: false

@@ -1,0 +1,35 @@
+# ROS 2 / colcon
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# C++ / CMake
+compile_commands.json
+CMakeUserPresets.json
+*.o
+*.a
+*.so
+
+# PX4 / simulation output
+*.ulg
+*.bson
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

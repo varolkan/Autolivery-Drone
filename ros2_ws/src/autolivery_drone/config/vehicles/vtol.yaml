@@ -1,0 +1,25 @@
+# Standard VTOL (quad lift + pusher, PX4 SITL gz_standard_vtol, SYS_AUTOSTART 4004).
+# Multicopter at both ends, fixed-wing on legs long enough to be worth transitioning.
+/**:
+  ros__parameters:
+    vehicle:
+      name: vtol
+      class: vtol
+      dropoff_method: hover
+      cruise_speed: 15.0
+      max_speed: 20.0
+      min_speed: 0.0
+      max_climb_rate: 3.0
+      max_descent_rate: 1.5
+      max_acceleration: 2.0
+      cruise_altitude: 60.0
+      takeoff_altitude: 10.0
+      body_radius: 1.3
+      planning_clearance: 7.0
+      acceptance_radius: 3.0
+      turn_radius: 60.0
+      release_altitude: 4.0
+      max_payload_kg: 1.5
+      max_range: 30000.0
+      px4_airframe: 4004
+      sim_model: standard_vtol

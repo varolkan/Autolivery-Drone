@@ -1,0 +1,25 @@
+# Coaxial X8 (PX4 12001 Octo Coax Wide): octocopter redundancy in a quad footprint, which
+# matters between buildings. Hover release.
+/**:
+  ros__parameters:
+    vehicle:
+      name: coaxial_octocopter
+      class: multicopter
+      dropoff_method: hover
+      cruise_speed: 9.0
+      max_speed: 12.0
+      min_speed: 0.0
+      max_climb_rate: 3.0
+      max_descent_rate: 1.5
+      max_acceleration: 2.5
+      cruise_altitude: 40.0
+      takeoff_altitude: 10.0
+      body_radius: 0.8
+      planning_clearance: 4.5
+      acceptance_radius: 2.0
+      turn_radius: 0.0
+      release_altitude: 4.0
+      max_payload_kg: 4.0
+      max_range: 6500.0
+      px4_airframe: 12001
+      sim_model: ""

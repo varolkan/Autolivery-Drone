@@ -1,0 +1,75 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 10
+      Plane Cell Count: 60
+      Reference Frame: <Fixed Frame>
+    - Class: rviz_default_plugins/MarkerArray
+      Name: City
+      Enabled: true
+      Topic:
+        Value: /autolivery/map/markers
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        Depth: 1
+    - Class: rviz_default_plugins/Path
+      Name: Route
+      Enabled: true
+      Color: 25; 255; 0
+      Line Style: Billboards
+      Line Width: 0.6
+      Topic:
+        Value: /autolivery/mission/route
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        Depth: 1
+    - Class: rviz_default_plugins/Path
+      Name: Active leg
+      Enabled: true
+      Color: 255; 170; 0
+      Line Style: Billboards
+      Line Width: 1.0
+      Topic:
+        Value: /autolivery/mission/path
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        Depth: 1
+    - Class: rviz_default_plugins/Path
+      Name: Planner test path
+      Enabled: true
+      Color: 0; 170; 255
+      Topic:
+        Value: /autolivery/planner/path
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        Depth: 1
+    - Class: rviz_default_plugins/Pose
+      Name: Vehicle (dry run)
+      Enabled: true
+      Shape: Axes
+      Axes Length: 4
+      Axes Radius: 0.6
+      Topic:
+        Value: /autolivery/fake_fcu/pose
+        Reliability Policy: Reliable
+        Depth: 5
+  Global Options:
+    Fixed Frame: world
+    Background Color: 48; 48; 48
+    Frame Rate: 30
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 420
+      Focal Point:
+        X: 100
+        Y: 60
+        Z: 0
+      Pitch: 0.9
+      Yaw: 3.9

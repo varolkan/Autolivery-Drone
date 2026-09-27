@@ -1,0 +1,27 @@
+# Fixed-wing (PX4 SITL gz_rc_cessna, SYS_AUTOSTART 4003). Cannot hover, so it delivers by
+# air drop and takes off from the airstrip depot. Cruises above every roof in the city.
+# takeoff_altitude must not exceed MIS_TAKEOFF_ALT (30 in the SITL airframe).
+/**:
+  ros__parameters:
+    depot: airstrip
+    vehicle:
+      name: fixed_wing
+      class: fixed_wing
+      dropoff_method: air_drop
+      cruise_speed: 15.0
+      max_speed: 20.0
+      min_speed: 11.0
+      max_climb_rate: 3.0
+      max_descent_rate: 2.0
+      max_acceleration: 2.0
+      cruise_altitude: 105.0
+      takeoff_altitude: 25.0
+      body_radius: 1.0
+      planning_clearance: 10.0
+      acceptance_radius: 60.0
+      turn_radius: 50.0
+      release_altitude: 30.0
+      max_payload_kg: 0.5
+      max_range: 40000.0
+      px4_airframe: 4003
+      sim_model: rc_cessna

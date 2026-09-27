@@ -1,0 +1,12 @@
+# Tether winch (MAV_CMD_DO_WINCH). Lowers the parcel from release_altitude and releases it
+# at the bottom; the flight controller or winch driver must implement WINCH_DELIVER.
+/**:
+  ros__parameters:
+    gripper:
+      type: winch
+      instance: 1
+      winch_rate: 0.8
+      winch_length: 0.0
+      release_time: 3.0
+    mission:
+      payload_feedback: false
