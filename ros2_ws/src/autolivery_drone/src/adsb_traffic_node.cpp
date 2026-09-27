@@ -15,6 +15,7 @@
 
 #include "autolivery_drone/city_map.hpp"
 #include "autolivery_drone/conversions.hpp"
+#include "autolivery_drone/node_main.hpp"
 #include "autolivery_drone/params.hpp"
 #include "autolivery_interfaces/msg/obstacle_array.hpp"
 #include "mavros_msgs/msg/adsb_vehicle.hpp"
@@ -25,11 +26,11 @@ namespace autolivery_drone
 
 using ADSB = mavros_msgs::msg::ADSBVehicle;
 
-class AdsbTrafficNode : public rclcpp::Node
+class AdsbTrafficNode : public AutoliveryNode
 {
 public:
   explicit AdsbTrafficNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : Node("adsb_traffic_node", options)
+  : AutoliveryNode("adsb_traffic_node", options)
   {
     city_ = loadCityMap(
       resolvePackagePath(
@@ -107,14 +108,6 @@ private:
 
 int main(int argc, char ** argv)
 {
-  rclcpp::init(argc, argv);
-  int code = 0;
-  try {
-    rclcpp::spin(std::make_shared<autolivery_drone::AdsbTrafficNode>());
-  } catch (const std::exception & e) {
-    RCLCPP_FATAL(rclcpp::get_logger("adsb_traffic_node"), "%s", e.what());
-    code = 1;
-  }
-  rclcpp::shutdown();
-  return code;
+  return autolivery_drone::runNode<autolivery_drone::AdsbTrafficNode>(
+    argc, argv, "adsb_traffic_node");
 }

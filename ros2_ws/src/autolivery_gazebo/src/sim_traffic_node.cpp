@@ -23,6 +23,7 @@
 #include "autolivery_core/geometry.hpp"
 #include "autolivery_drone/city_map.hpp"
 #include "autolivery_drone/conversions.hpp"
+#include "autolivery_drone/node_main.hpp"
 #include "autolivery_drone/params.hpp"
 #include "autolivery_interfaces/msg/obstacle_array.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -62,11 +63,11 @@ RouteState routeAt(const autolivery_drone::TrafficRoute & route, double t)
   return {w.back(), {}};
 }
 
-class SimTrafficNode : public rclcpp::Node
+class SimTrafficNode : public autolivery_drone::AutoliveryNode
 {
 public:
   explicit SimTrafficNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : Node("sim_traffic", options)
+  : autolivery_drone::AutoliveryNode("sim_traffic", options)
   {
     city_ = autolivery_drone::loadCityMap(
       autolivery_drone::resolvePackagePath(
@@ -130,14 +131,5 @@ private:
 
 int main(int argc, char ** argv)
 {
-  rclcpp::init(argc, argv);
-  int code = 0;
-  try {
-    rclcpp::spin(std::make_shared<autolivery_gazebo::SimTrafficNode>());
-  } catch (const std::exception & e) {
-    RCLCPP_FATAL(rclcpp::get_logger("sim_traffic"), "%s", e.what());
-    code = 1;
-  }
-  rclcpp::shutdown();
-  return code;
+  return autolivery_drone::runNode<autolivery_gazebo::SimTrafficNode>(argc, argv, "sim_traffic");
 }

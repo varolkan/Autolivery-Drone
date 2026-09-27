@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "autolivery_core/gripper.hpp"
+#include "autolivery_drone/node_main.hpp"
 #include "autolivery_drone/params.hpp"
 #include "autolivery_interfaces/msg/payload_state.hpp"
 #include "mavros_msgs/srv/command_long.hpp"
@@ -42,11 +43,11 @@ using autolivery_core::MavCommand;
 using PayloadMsg = autolivery_interfaces::msg::PayloadState;
 using Trigger = std_srvs::srv::Trigger;
 
-class PayloadNode : public rclcpp::Node
+class PayloadNode : public AutoliveryNode
 {
 public:
   explicit PayloadNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : Node("payload_node", options)
+  : AutoliveryNode("payload_node", options)
   {
     gripper_ = declareGripperConfig(*this);
     // Validate the MAVLink mapping now rather than on the first release over a customer's
@@ -246,14 +247,5 @@ private:
 
 int main(int argc, char ** argv)
 {
-  rclcpp::init(argc, argv);
-  int code = 0;
-  try {
-    rclcpp::spin(std::make_shared<autolivery_drone::PayloadNode>());
-  } catch (const std::exception & e) {
-    RCLCPP_FATAL(rclcpp::get_logger("payload_node"), "%s", e.what());
-    code = 1;
-  }
-  rclcpp::shutdown();
-  return code;
+  return autolivery_drone::runNode<autolivery_drone::PayloadNode>(argc, argv, "payload_node");
 }

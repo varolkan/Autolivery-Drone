@@ -34,6 +34,7 @@
 #include "autolivery_core/velocity_obstacle.hpp"
 #include "autolivery_drone/city_map.hpp"
 #include "autolivery_drone/conversions.hpp"
+#include "autolivery_drone/node_main.hpp"
 #include "autolivery_drone/params.hpp"
 #include "autolivery_drone/route_planner.hpp"
 #include "autolivery_interfaces/action/deliver.hpp"
@@ -70,11 +71,11 @@ using Deliver = autolivery_interfaces::action::Deliver;
 using GoalHandle = rclcpp_action::ServerGoalHandle<Deliver>;
 using PayloadMsg = autolivery_interfaces::msg::PayloadState;
 
-class MissionNode : public rclcpp::Node
+class MissionNode : public AutoliveryNode
 {
 public:
   explicit MissionNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : Node("mission_node", options)
+  : AutoliveryNode("mission_node", options)
   {
     const auto map_file = resolvePackagePath(
       declare_parameter<std::string>("map_file", "maps/urban_delivery.yaml"));
@@ -711,16 +712,5 @@ private:
 
 int main(int argc, char ** argv)
 {
-  rclcpp::init(argc, argv);
-  int code = 0;
-  try {
-    rclcpp::spin(std::make_shared<autolivery_drone::MissionNode>());
-  } catch (const std::exception & e) {
-    // Configuration errors (bad profile, missing map, unknown depot) end up here. Exit
-    // non-zero so launch and systemd see a failed start rather than a quiet node.
-    RCLCPP_FATAL(rclcpp::get_logger("mission_node"), "%s", e.what());
-    code = 1;
-  }
-  rclcpp::shutdown();
-  return code;
+  return autolivery_drone::runNode<autolivery_drone::MissionNode>(argc, argv, "mission_node");
 }

@@ -28,6 +28,7 @@ find_package(yaml-cpp REQUIRED)
 # Map loading, parameters, planning and conversions shared by every node.
 add_library(${PROJECT_NAME}_common STATIC
   src/city_map.cpp
+  src/node_main.cpp
   src/params.cpp
   src/route_planner.cpp
 )
@@ -102,6 +103,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_conversions test/test_conversions.cpp)
   target_link_libraries(test_conversions ${PROJECT_NAME}_common)
+
+  ament_add_gtest(test_node_main test/test_node_main.cpp TIMEOUT 120)
+  target_link_libraries(test_node_main ${PROJECT_NAME}_common)
 
   # Full ROS graph against the fake flight controller: action in, parcel out.
   add_launch_test(test/test_dry_run_delivery.py TIMEOUT 600)

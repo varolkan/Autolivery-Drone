@@ -18,6 +18,7 @@
 #include "autolivery_core/kinematic_vehicle.hpp"
 #include "autolivery_drone/city_map.hpp"
 #include "autolivery_drone/conversions.hpp"
+#include "autolivery_drone/node_main.hpp"
 #include "autolivery_drone/params.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/twist_stamped.hpp"
@@ -38,11 +39,11 @@ namespace autolivery_drone
 
 using autolivery_core::Vec3;
 
-class FakeFcuNode : public rclcpp::Node
+class FakeFcuNode : public AutoliveryNode
 {
 public:
   explicit FakeFcuNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : Node("fake_fcu", options)
+  : AutoliveryNode("fake_fcu", options)
   {
     city_ = loadCityMap(
       resolvePackagePath(
@@ -254,14 +255,5 @@ private:
 
 int main(int argc, char ** argv)
 {
-  rclcpp::init(argc, argv);
-  int code = 0;
-  try {
-    rclcpp::spin(std::make_shared<autolivery_drone::FakeFcuNode>());
-  } catch (const std::exception & e) {
-    RCLCPP_FATAL(rclcpp::get_logger("fake_fcu"), "%s", e.what());
-    code = 1;
-  }
-  rclcpp::shutdown();
-  return code;
+  return autolivery_drone::runNode<autolivery_drone::FakeFcuNode>(argc, argv, "fake_fcu");
 }

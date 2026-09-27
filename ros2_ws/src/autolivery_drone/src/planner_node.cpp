@@ -13,6 +13,7 @@
 #include "autolivery_core/geometry.hpp"
 #include "autolivery_drone/city_map.hpp"
 #include "autolivery_drone/conversions.hpp"
+#include "autolivery_drone/node_main.hpp"
 #include "autolivery_drone/params.hpp"
 #include "autolivery_drone/route_planner.hpp"
 #include "autolivery_interfaces/srv/plan_path.hpp"
@@ -27,11 +28,11 @@ using autolivery_core::Vec3;
 using visualization_msgs::msg::Marker;
 using PlanPath = autolivery_interfaces::srv::PlanPath;
 
-class PlannerNode : public rclcpp::Node
+class PlannerNode : public AutoliveryNode
 {
 public:
   explicit PlannerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : Node("planner_node", options)
+  : AutoliveryNode("planner_node", options)
   {
     const auto map_file = resolvePackagePath(
       declare_parameter<std::string>("map_file", "maps/urban_delivery.yaml"));
@@ -183,14 +184,5 @@ private:
 
 int main(int argc, char ** argv)
 {
-  rclcpp::init(argc, argv);
-  int code = 0;
-  try {
-    rclcpp::spin(std::make_shared<autolivery_drone::PlannerNode>());
-  } catch (const std::exception & e) {
-    RCLCPP_FATAL(rclcpp::get_logger("planner_node"), "%s", e.what());
-    code = 1;
-  }
-  rclcpp::shutdown();
-  return code;
+  return autolivery_drone::runNode<autolivery_drone::PlannerNode>(argc, argv, "planner_node");
 }
