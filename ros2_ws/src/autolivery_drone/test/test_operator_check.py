@@ -1,4 +1,4 @@
-"""A real vehicle is not flown until the operator has accepted responsibility for the flight."""
+"""Every launch shows the license terms; a real vehicle is only flown once they are accepted."""
 
 import importlib.util
 import os
@@ -32,9 +32,10 @@ def _context(**arguments):
 def test_real_vehicle_is_refused_without_acceptance():
     with pytest.raises(RuntimeError, match='accept_risk:=true') as refused:
         STACK._operator_check(_context(simulation='false', accept_risk='false'))
-    # What the operator is shown is the safety notice itself.
+    # What the operator is shown is the safety notice itself, and where the license is.
     assert 'solely' in str(refused.value)
     assert 'responsible' in str(refused.value)
+    assert 'LICENSE.md' in str(refused.value)
 
 
 def test_only_an_explicit_true_counts():
@@ -47,6 +48,8 @@ def test_real_vehicle_flies_once_accepted_and_the_acceptance_is_logged():
     actions = STACK._operator_check(_context(simulation='false', accept_risk='true'))
     assert len(actions) == 1
     assert isinstance(actions[0], LogInfo)
+    logged = perform_substitutions(_context(), actions[0].msg)
+    assert 'accepted the license (LICENSE.md) and responsibility' in logged
 
 
 def test_simulation_needs_no_acceptance():
@@ -63,6 +66,21 @@ def test_refusal_is_the_default_and_comes_before_anything_starts():
     # The check is the first thing run: before MAVROS is included and before any node.
     first = next(e for e in entities if isinstance(e, (OpaqueFunction, IncludeLaunchDescription)))
     assert isinstance(first, OpaqueFunction)
+
+
+def test_every_launch_shows_the_license_terms_first():
+    entities = STACK.generate_launch_description().entities
+    # The first thing a launch does, whatever its arguments, simulated or not.
+    first = next(e for e in entities if not isinstance(e, DeclareLaunchArgument))
+    assert isinstance(first, LogInfo)
+    assert first.condition is None
+    shown = perform_substitutions(_context(), first.msg)
+    # Word for word the Required Notice at the top of LICENSE.md, so the two cannot drift.
+    with open(os.path.join(SOURCE, '..', '..', '..', 'LICENSE.md')) as f:
+        notices = [line for line in f.read().splitlines() if line.startswith('Required Notice: ')]
+    terms = next(n for n in notices if 'licensed under' in n)[len('Required Notice: '):]
+    assert terms in shown
+    assert 'Using it means accepting those terms: read LICENSE.md.' in shown
 
 
 def test_dry_run_and_gazebo_launches_mark_themselves_as_simulation():

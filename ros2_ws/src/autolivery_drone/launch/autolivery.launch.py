@@ -3,9 +3,11 @@ r"""Bring up the delivery flight stack for one vehicle.
     ros2 launch autolivery_drone autolivery.launch.py vehicle:=quadcopter gripper:=servo \
         fcu_url:=/dev/ttyACM0:921600 accept_risk:=true
 
-A real vehicle is only flown with accept_risk:=true: the operator confirms having read the
-safety notice and accepts sole responsibility for the flight. Without it nothing is started.
-The dry-run and Gazebo launches include this one with simulation:=true and need no such step.
+Every launch, real or simulated, first prints the license terms (LICENSE.md). A real vehicle
+is only flown with accept_risk:=true: the operator confirms having read the safety notice and
+the license, accepts them, and takes sole responsibility for the flight. Without it nothing is
+started. The dry-run and Gazebo launches include this one with simulation:=true and need no
+such step.
 
 Nodes:
   mavros             -- MAVLink link to PX4 (skipped with use_mavros:=false)
@@ -41,16 +43,25 @@ SAFETY_NOTICE = (
     'responsible for the flight, for operating safely and lawfully, and for any authorisation it '
     'needs (see the safety notice in README.md and LICENSE.md).')
 
+# The same terms as the Required Notice at the top of LICENSE.md.
+LICENSE_NOTICE = (
+    'Autolivery-Drone: This software is licensed under the PolyForm Noncommercial License 1.0.0 '
+    'with Additional Conditions. Commercial use, military use and use in weapons are all '
+    'forbidden, and anyone who shares or publishes the software, or anything made with it, must '
+    'credit varolkan. Using it means accepting those terms: read LICENSE.md.')
+
 
 def _operator_check(context):
-    """Refuse to fly a real vehicle until the operator has accepted responsibility."""
+    """Refuse to fly a real vehicle until the operator has accepted the license and the risk."""
     if LaunchConfiguration('simulation').perform(context) == 'true':
         return []
     if LaunchConfiguration('accept_risk').perform(context) != 'true':
         raise RuntimeError(
-            SAFETY_NOTICE + ' To fly a real vehicle, confirm that you have read this and accept '
-            'that responsibility by adding accept_risk:=true to the launch command.')
-    accepted = 'operator accepted responsibility for this flight (accept_risk:=true). '
+            SAFETY_NOTICE + ' To fly a real vehicle, confirm that you have read this and '
+            'LICENSE.md and accept them, and that responsibility, by adding accept_risk:=true to '
+            'the launch command.')
+    accepted = ('operator accepted the license (LICENSE.md) and responsibility for this flight '
+                '(accept_risk:=true). ')
     return [LogInfo(msg=accepted + SAFETY_NOTICE)]
 
 
@@ -158,10 +169,13 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'accept_risk', default_value='false',
             description='Must be true to fly a real vehicle: you confirm that you have read the '
-                        'safety notice and accept sole responsibility for the flight.'),
+                        'safety notice and LICENSE.md, accept them, and accept sole '
+                        'responsibility for the flight.'),
         DeclareLaunchArgument(
             'simulation', default_value='false',
             description='Set by the dry-run and Gazebo launches; no vehicle is flown for real.'),
+        # Every launch, real or simulated, shows the license terms first.
+        LogInfo(msg=LICENSE_NOTICE),
         # Before anything is started, MAVROS included.
         OpaqueFunction(function=_operator_check),
         mavros,
