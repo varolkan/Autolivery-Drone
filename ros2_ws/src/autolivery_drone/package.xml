@@ -9,7 +9,7 @@
     controller for dry runs.
   </description>
   <maintainer email="148723216+varolkan@users.noreply.github.com">varolkan</maintainer>
-  <license>All rights reserved</license>
+  <license>PolyForm-Noncommercial-1.0.0 AND LicenseRef-Autolivery-Additional-Conditions</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

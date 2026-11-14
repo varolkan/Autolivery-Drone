@@ -2,6 +2,8 @@
 
 Autonomous parcel delivery for PX4 drones and planes, on ROS 2.
 
+Licensed under the [PolyForm Noncommercial License 1.0.0 with Additional Conditions](LICENSE.md): no commercial use, no military use, and anyone who uses it must credit it. Experimental and tested in simulation only: read the [safety notice](#safety-notice) before flying it.
+
 A delivery is one action goal: the vehicle checks the weather against its limits, plans a route through the city (A* or RRT*), takes off, flies it in PX4 offboard mode through MAVROS, dodges other traffic on the way, drops the parcel (hover, winch, landing or air drop), flies home and lands. Everything is simulated in a Gazebo city generated from the same map the planner flies against.
 
 ## Architecture
@@ -183,6 +185,8 @@ In earlier runs the Gazebo rc_cessna nosed over during the rollout after an othe
 
 ### Real vehicle
 
+Read the [safety notice](#safety-notice) first: everything below is at the operator's own risk.
+
 ```bash
 ros2 launch autolivery_drone autolivery.launch.py \
     vehicle:=hexacopter gripper:=winch fcu_url:=/dev/ttyACM0:921600 gcs_url:=udp://@10.0.0.2
@@ -276,3 +280,18 @@ The format holds a real district. Maps built from open data (Overture Maps build
 - The fixed-wing loiter-down point for the airstrip runway sits about 100 m west of the main (multirotor) depot at 40 m; with both fleets flying at once the two need separating in the map.
 - The mission reports success on "landed and disarmed"; it does not yet read PX4's failure-detector state, so a hard landing that still ends disarmed counts as a completed delivery.
 - `NAV_DLL_ACT` and `FW_LND_USETER` are overridden in simulation only (see "Real vehicle").
+
+## Safety notice
+
+This is experimental software. It has only been tested in simulation, it is not certified for any aircraft, and like any flight software it can fail in ways that crash a vehicle, drop a parcel in the wrong place, damage property or hurt people. Whoever flies it does so entirely at their own risk and is solely responsible for the vehicle, for operating it safely, and for following the aviation rules where it flies (delivery flights over towns and people need an authorisation from the aviation authority almost everywhere). Fly first in an open area, within sight, with a safety pilot ready to take over.
+
+## License
+
+Copyright (c) 2025-2026 varolkan. Licensed under the [PolyForm Noncommercial License 1.0.0 with Additional Conditions](LICENSE.md). In short (the license text is what counts):
+
+- **Permitted**: noncommercial purposes, including personal study, research, experiment and testing, hobby projects and private entertainment, and use by charitable organisations, educational institutions, public research, public safety or health and environmental protection organisations, and government institutions, except military ones.
+- **No commercial use**: nothing that earns money, or is meant to, for anyone. That includes projects funded by investors, paid for by a client or sponsored by a business, even while they are still at the research or prototype stage. Commercial use needs a separate written license from the author.
+- **No military use**: not by or for armed forces, defense ministries, military intelligence, private military companies or their contractors, and not for weapons or any other military purpose, by anyone.
+- **Credit**: anyone who shares, shows or publishes it, or anything made with it, must credit it as "Based on Autolivery-Drone by varolkan (https://github.com/varolkan)" and say whether they changed it.
+- **Passing it on**: every copy must come with the license, its Additional Conditions and the `Required Notice:` lines at the top of it, including the safety notice.
+- **No warranty, no liability**: as far as the law allows, the software comes as is, without any warranty, and the author is not liable for any damages arising from its use.

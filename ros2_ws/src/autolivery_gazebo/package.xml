@@ -9,7 +9,7 @@
     and the launch file that runs it all with PX4 SITL.
   </description>
   <maintainer email="148723216+varolkan@users.noreply.github.com">varolkan</maintainer>
-  <license>All rights reserved</license>
+  <license>PolyForm-Noncommercial-1.0.0 AND LicenseRef-Autolivery-Additional-Conditions</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>

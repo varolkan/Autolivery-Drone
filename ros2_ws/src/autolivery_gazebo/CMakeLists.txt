@@ -42,7 +42,7 @@ install(DIRECTORY launch worlds DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
-  # ROS 2 C++ style. No per-file copyright headers: the licence is the repository's LICENSE.
+  # ROS 2 C++ style. No per-file copyright headers: the licence is the repository's LICENSE.md.
   find_package(ament_cmake_uncrustify REQUIRED)
   find_package(ament_cmake_cpplint REQUIRED)
   ament_uncrustify()
