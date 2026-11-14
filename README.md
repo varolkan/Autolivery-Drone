@@ -6,6 +6,37 @@ Licensed under the [PolyForm Noncommercial License 1.0.0 with Additional Conditi
 
 A delivery is one action goal: the vehicle checks the weather against its limits, plans a route through the city (A* or RRT*), takes off, flies it in PX4 offboard mode through MAVROS, dodges other traffic on the way, drops the parcel (hover, winch, landing or air drop), flies home and lands. Everything is simulated in a Gazebo city generated from the same map the planner flies against.
 
+## Results
+
+All of these are simulated flights. The PX4 ones run the actual PX4 autopilot (SITL) in Gazebo; the city ones fly a kinematic model of the vehicle over the real buildings and terrain of five districts. Details and the full list of runs are under [Verified in PX4 SITL + Gazebo](#verified-in-px4-sitl--gazebo) and [The city map](#the-city-map).
+
+![PX4 SITL + Gazebo: quadcopter in the demo city, nine scenarios](docs/images/sitl-quadcopter.png)
+
+![PX4 SITL + Gazebo: VTOL and fixed-wing in the demo city](docs/images/sitl-vtol-fixed-wing.png)
+
+![Marseille, Vieux-Port: PX4 SITL + Gazebo delivery over the real city map](docs/images/sitl-marseille.png)
+
+![Weather go/no-go in five cities, forecast and recorded wind](docs/images/weather-go-no-go.png)
+
+![Marseille in wind over the limit: three configurations compared](docs/images/storm-marseille.png)
+
+<details>
+<summary>Five city districts flown in calm air</summary>
+
+![Paris, Montparnasse](docs/images/city-paris.png)
+
+![Monaco, Monte-Carlo](docs/images/city-monaco.png)
+
+![Marseille, Vieux-Port](docs/images/city-marseille.png)
+
+![Coimbra, Alta and Baixa](docs/images/city-coimbra.png)
+
+![Konya, Alaaddin and Mevlana](docs/images/city-konya.png)
+
+</details>
+
+Map data in the city pictures: contains information from [OpenStreetMap](https://www.openstreetmap.org/copyright) and [Overture Maps](https://overturemaps.org), which is made available here under the [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/1-0/); © OpenStreetMap contributors, Overture Maps Foundation. Terrain: NASA SRTM. Weather: NOAA. How the map data was converted: [docs/images/MAP-DATA.md](docs/images/MAP-DATA.md).
+
 ## Architecture
 
 ```
@@ -174,7 +205,7 @@ PX4 v1.16.2, Gazebo Harmonic (gz-sim 8.10), MAVROS 2.16, headless, one flight pe
 | quadcopter | `mission_node` killed on the way out | PX4's offboard-loss failsafe: braked (32 m further on), descended, landed 60 s later |
 | quadcopter | hotel_roof (55 m roof), RRT*, other traffic | delivered, landed 0.36 m from the pad, clearance 7.1 m, 116 s |
 | quadcopter | Marseille Vieux-Port, real map, forecast evening wind 4.3 m/s from 288°, gusts 7.2 | delivered to a roof 625 m away, landed 0.44 m from the pad, clearance 6.0 m from every one of the 11,768 buildings, 148 s (Gazebo held the 765 within 110 m of the route) |
-| quadcopter | Marseille, that day's Mistral (13.1 m/s) | refused, wind over the limit |
+| quadcopter | Marseille, the Mistral forecast for 13 Nov, 15:00 UTC: 13.1 m/s from 325°, gusts 14.4 | refused on the ground (`wind of 13.1 m/s is over the quadcopter limit of 8.0 m/s`) |
 | vtol (standard_vtol) | farm, 515 m legs, calm | delivered: multicopter, plane, multicopter on each leg; parcel at rest 1.4 m from the target, landed 0.09 m from the pad, 250 s |
 | vtol | farm, wind 6 m/s from 250°, gusts 9 | first flight: PX4 quad-chuted three times (two transition timeouts, one altitude loss in a transition) and the mission asked for plane flight again each time. Re-flown with the quad-chute handling: no quad-chute that time, delivered, released 0.03 m from the target, landed 0.06 m from the pad, 250 s |
 | vtol | farm, PX4's `VT_TRANS_TIMEOUT` set below its minimum transition time, so every transition times out | one request for plane flight, one quad-chute, delivery abandoned 0.3 s later; flown home as a multicopter with the parcel aboard, landed 0.11 m from the pad. PX4 then refuses to arm until rebooted |
@@ -301,3 +332,5 @@ Copyright (c) 2025-2026 varolkan. Licensed under the [PolyForm Noncommercial Lic
 - **No second chances**: commercial, military or weapons use ends the license at once, and stopping afterwards never excuses it.
 - **Passing it on**: every copy must come with the license, its Additional Conditions and the `Required Notice:` lines at the top of it, including the safety notice.
 - **No warranty, no liability**: as far as the law allows, the software comes as is, without any warranty, and the author is not liable for any damages arising from its use.
+
+The pictures in `docs/images` are covered by the same license. The map data in the city pictures stays under its own license, the ODbL; see [docs/images/MAP-DATA.md](docs/images/MAP-DATA.md).

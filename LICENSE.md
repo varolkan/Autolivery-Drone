@@ -6,7 +6,7 @@ Required Notice: This software is experimental and not certified for flight. Any
 
 # Additional Conditions
 
-The software is provided to you by the licensor under the PolyForm Noncommercial License 1.0.0 below (the "License"), subject to the following Additional Conditions. They are part of the terms you must agree to under the License's Acceptance section, as both strict obligations and conditions to all your licenses. Where they conflict with the License, these Additional Conditions control. The PolyForm Project has not reviewed or endorsed them.
+The software is provided to you by the licensor under the PolyForm Noncommercial License 1.0.0 below (the "License"), subject to the following Additional Conditions. They are part of the terms you must agree to under the License's Acceptance section, as both strict obligations and conditions to all your licenses. Where they conflict with the License, these Additional Conditions control. The PolyForm Project has not reviewed or endorsed them. In these terms, the software includes its documentation and images, except third-party data credited in them (see docs/images/MAP-DATA.md), which stays under its own license.
 
 ## No Commercial Use
 
