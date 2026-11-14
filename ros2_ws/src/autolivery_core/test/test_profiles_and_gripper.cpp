@@ -62,6 +62,58 @@ TEST(VehicleProfile, CatchesUnsafeNumbers)
   EXPECT_TRUE(mentions(validate(p), "takeoff_altitude"));
 }
 
+TEST(VehicleProfile, WeatherLimitsHaveToMakeSense)
+{
+  VehicleProfile p = autolivery_test::quadProfile();
+  p.max_wind = p.max_speed;  // it could not move against a wind it is allowed to fly in
+  EXPECT_TRUE(mentions(validate(p), "max_wind must be below max_speed"));
+  p = autolivery_test::planeProfile();
+  p.max_wind = p.cruise_speed;
+  EXPECT_TRUE(mentions(validate(p), "max_wind must be below cruise_speed"));
+  p = autolivery_test::quadProfile();
+  p.max_wind = 0.0;
+  EXPECT_TRUE(mentions(validate(p), "max_wind must be positive"));
+  p = autolivery_test::quadProfile();
+  p.max_gust = p.max_wind - 1.0;
+  EXPECT_TRUE(mentions(validate(p), "max_gust"));
+  p = autolivery_test::quadProfile();
+  p.max_precipitation = -1.0;
+  EXPECT_TRUE(mentions(validate(p), "max_precipitation"));
+  p = autolivery_test::quadProfile();
+  p.min_temperature = 45.0;
+  EXPECT_TRUE(mentions(validate(p), "min_temperature"));
+}
+
+TEST(VehicleProfile, GroundSpeedInWind)
+{
+  const Vec3 east{1.0, 0.0, 0.0};
+  // A multirotor (cruise 8, top speed 12) flies the ground speed it is told for as long as
+  // it has the airspeed to do it.
+  const VehicleProfile quad = autolivery_test::quadProfile();
+  EXPECT_DOUBLE_EQ(quad.groundSpeed(east, {}), 8.0);
+  EXPECT_DOUBLE_EQ(quad.groundSpeed(east, {5.0, 0.0, 0.0}), 8.0);    // tailwind: no faster
+  EXPECT_DOUBLE_EQ(quad.groundSpeed(east, {-3.0, 0.0, 0.0}), 8.0);   // 11 m/s of airspeed
+  EXPECT_DOUBLE_EQ(quad.groundSpeed(east, {-7.0, 0.0, 0.0}), 5.0);   // all 12, and 7 lost
+  EXPECT_DOUBLE_EQ(quad.groundSpeed(east, {0.0, 7.0, 0.0}), 8.0);    // crabbing, within reach
+  // On the nose and across at once: holding the course takes sqrt(12^2 - 5.66^2) = 10.58 of
+  // the airspeed, and 5.66 of that goes on the headwind.
+  const Vec3 quartering = Vec3{-1.0, 1.0, 0.0}.normalized() * 8.0;
+  EXPECT_NEAR(quad.groundSpeed(east, quartering), 4.93, 0.01);
+  EXPECT_DOUBLE_EQ(quad.groundSpeed(east, {-30.0, 0.0, 0.0}), 1.0);  // never zero or negative
+  EXPECT_DOUBLE_EQ(quad.groundSpeed(east, {0.0, 30.0, 0.0}), 1.0);
+  // A vertical leg has no course; the wind's height does not come into it either.
+  EXPECT_DOUBLE_EQ(quad.groundSpeed(east, {-7.0, 0.0, 4.0}), 5.0);
+
+  // A wing flies its airspeed (15) and gets what the wind leaves.
+  const VehicleProfile plane = autolivery_test::planeProfile();
+  EXPECT_DOUBLE_EQ(plane.groundSpeed(east, {}), 15.0);
+  EXPECT_DOUBLE_EQ(plane.groundSpeed(east, {5.0, 0.0, 0.0}), 20.0);
+  EXPECT_DOUBLE_EQ(plane.groundSpeed(east, {-5.0, 0.0, 0.0}), 10.0);
+  EXPECT_NEAR(plane.groundSpeed(east, {0.0, 8.0, 0.0}), std::sqrt(15.0 * 15.0 - 8.0 * 8.0), 1e-9);
+  // A VTOL cruises on its wing.
+  EXPECT_DOUBLE_EQ(autolivery_test::vtolProfile().groundSpeed(east, {-5.0, 0.0, 0.0}), 10.0);
+}
+
 TEST(VehicleProfile, ParsingRoundTrips)
 {
   for (auto c : {VehicleClass::Multicopter, VehicleClass::FixedWing, VehicleClass::Vtol}) {

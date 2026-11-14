@@ -19,6 +19,15 @@
 //    OFFBOARD turns into the vehicle lunging for a waypoint from five minutes ago.
 //  * Everything that can fail has a deadline. A mission never waits forever for a mode
 //    change, a climb, a release, or a landing.
+//  * It never flies on a position it is no longer being told. If the link or the position
+//    estimate goes quiet in flight the vehicle is held where it is, and if it stays quiet
+//    the mission ends and the autopilot's own failsafe takes over.
+//  * A parcel only counts as delivered when the release was acknowledged (or sensed). A
+//    gripper command that failed is retried; one that keeps failing brings the parcel home.
+//  * It does not fly in weather the airframe is not made for. Wind, gusts, rain or cold
+//    beyond the profile's limits refuse a delivery on the ground and bring one home from the
+//    air. And whatever the report says, a vehicle that is being carried off the spot it was
+//    told to hold is brought down or home while it is still close.
 //  * Aborts go home by a planned path, not a straight line: a straight-line RTL in a city
 //    goes through buildings unless RTL_RETURN_ALT clears every roof. Only when replanning
 //    itself fails is the autopilot's RTL used as the last resort.
@@ -79,6 +88,16 @@ enum class VtolState {Undefined, Mc, Fw, TransitionToFw, TransitionToMc};
 enum class PayloadState {Unknown, Attached, Released};
 enum class VtolRequest {None, Mc, Fw};
 
+// The weather, as far as anyone has told the mission. A report may leave things out; what
+// it leaves out is not judged.
+struct Weather
+{
+  std::optional<Vec3> wind;    // mean wind, m/s, world frame: the way the air is moving
+  double gust{-1.0};           // strongest gust, m/s; negative when not reported
+  double precipitation{-1.0};  // rain or snow, mm/h; negative when not reported
+  double temperature{std::numeric_limits<double>::quiet_NaN()};  // deg C; NaN when not reported
+};
+
 struct VehicleSnapshot
 {
   bool connected{false};
@@ -92,6 +111,7 @@ struct VehicleSnapshot
   VtolState vtol{VtolState::Undefined};
   double battery{-1.0};      // remaining fraction in [0, 1]; negative when unknown
   PayloadState payload{PayloadState::Unknown};
+  std::optional<Weather> weather;  // nothing when there is no current report
 };
 
 struct Setpoint
@@ -145,11 +165,24 @@ struct MissionConfig
   double air_drop_max_cross_track{10.0};  // m, predicted impact further off-line = go around
   int air_drop_attempts{2};
 
+  // s without a link to the vehicle or a position from it, in flight, before the mission
+  // gives up and leaves the vehicle to the autopilot. Until then the vehicle is held.
+  double telemetry_timeout{3.0};
+
+  // Refuse to start without a current weather report. Off, a delivery without one flies
+  // unchecked (and says so); what a report does say is always held against the limits.
+  bool require_weather_report{false};
+  // s the weather has to stay outside the vehicle's limits in flight before the delivery is
+  // abandoned: one reading is not a reason to turn round.
+  double weather_abort_after{5.0};
+
   double preflight_timeout{60.0};     // s for the vehicle to become ready, enter mode and arm
+  // Climbs, descents and RTL landings get at least these, and more when the height or the
+  // distance to cover needs it (see verticalTimeout()).
   double takeoff_timeout{90.0};
   double descend_timeout{60.0};
   double land_timeout{240.0};
-  double leg_timeout_factor{2.5};     // leg deadline = length / cruise_speed * factor + margin
+  double leg_timeout_factor{2.5};     // leg deadline = expected time * factor + margin
   double leg_timeout_margin{60.0};
 };
 
@@ -199,6 +232,13 @@ public:
   // Operator abort: go home if airborne, stand down if not.
   void cancel(const std::string & reason = "cancelled by operator");
 
+  // Outcome of the release the last MissionCommand asked for, reported by whoever drives the
+  // gripper. Without a payload sensor a delivery is only confirmed `release_duration` after
+  // an accepted release, so a command the gripper never got cannot pass for a delivery. A
+  // failed one is tried again after `release_retry_period`.
+  void releaseAccepted();
+  void releaseFailed(const std::string & reason);
+
   MissionCommand update(const VehicleSnapshot & vehicle, double now);
 
   MissionState state() const {return state_;}
@@ -228,7 +268,10 @@ private:
 
   // Safety checks that apply in every airborne state. Return true if they took over.
   bool checkExternalTakeover(const VehicleSnapshot & v, MissionCommand & cmd);
+  bool checkTelemetry(const VehicleSnapshot & v, double now, MissionCommand & cmd);
   bool checkBattery(const VehicleSnapshot & v, double now, MissionCommand & cmd);
+  bool checkWeather(const VehicleSnapshot & v, double now);
+  void checkPlaneFallback(const VehicleSnapshot & v, double now);
 
   void transition(MissionState next, double now, const std::string & why = {});
   void startLeg(Leg leg, Path path, double now);
@@ -242,9 +285,17 @@ private:
   bool settleBeforeLanding(
     const VehicleSnapshot & v, const Vec3 & target, double now, MissionCommand & cmd);
   Setpoint holdAt(const Vec3 & p, double yaw = std::numeric_limits<double>::quiet_NaN()) const;
-  double legDeadline(double length, double now) const;
-  bool airDropTrigger(const VehicleSnapshot & v, bool * on_line) const;
+  bool holdLost(const VehicleSnapshot & v, const Vec3 & target, double now);
+  double cornerSpeed(const PathFollower::Progress & p, double brake, double reach) const;
+  double legDeadline(const Path & path, double now) const;
+  double verticalTimeout(double minimum, double height, double rate) const;
+  // What in the report is outside the vehicle's limits, in words; empty when nothing is.
+  std::string weatherProblem(const VehicleSnapshot & v) const;
+  // Time to fly a path in the wind in hand, and the metres of air it takes.
+  double legTime(const Path & path, double * air_distance = nullptr) const;
+  std::optional<double> airDropOvershoot(const VehicleSnapshot & v, bool * on_line) const;
   std::optional<Vec3> chooseAirDropHeading(const Vec3 & target, const Vec3 & from) const;
+  PlanResult planGoAround(const Vec3 & from) const;
 
   VehicleProfile profile_;
   MissionConfig config_;
@@ -279,16 +330,26 @@ private:
   Vec3 hold_xy_;               // where Takeoff climbs from
   double ready_since_{-1.0};
   double settle_since_{-1.0};
-  double first_release_{-1.0};
-  double last_release_{-1.0};
+  double first_release_{-1.0};     // when the release in progress was commanded
+  double last_release_{-1.0};      // when a release was last commanded, failed ones included
+  double release_accepted_{-1.0};  // when the release in progress was acknowledged
   int air_drop_attempt_{0};
   bool pass_missed_{false};    // this air-drop pass will not release; go around at its end
+  bool drop_armed_{false};     // on this pass the release point has been seen ahead
   bool was_armed_{false};
   bool aborted_{false};
   bool stand_down_{false};     // failed on the ground: keep the motors off
   bool land_via_rtl_{false};   // no planned route home; let the autopilot's RTL do it
   bool landing_committed_{false};  // stopped over the landing spot; AUTO.LAND from here
   Vec3 land_target_;           // where to stop before landing at the depot
+  double land_travel_{-1.0};   // s the trip home was expected to take when Land was entered
+  double blind_since_{-1.0};   // since when the link or the position has been missing in flight
+  double adrift_since_{-1.0};  // since when the vehicle has been off the spot it is to hold
+  double weather_bad_since_{-1.0};  // since when the weather has been outside the limits
+  Vec3 wind_;                  // mean wind last reported, horizontal; zero until one is
+  VtolState last_vtol_{VtolState::Undefined};  // VTOL state in the last snapshot
+  bool plane_failed_{false};   // the autopilot quad-chuted: no more plane flight this mission
+  MissionCommand last_command_;  // the last command given with the vehicle in sight
   bool avoiding_{false};
   std::string threat_;
   std::string wanted_mode_;    // mode the mission is asking for

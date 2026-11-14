@@ -13,6 +13,7 @@
 
 #include "autolivery_core/geometry.hpp"
 #include "autolivery_core/mission.hpp"
+#include "autolivery_interfaces/msg/weather.hpp"
 #include "geometry_msgs/msg/point.hpp"
 #include "geometry_msgs/msg/quaternion.hpp"
 #include "geometry_msgs/msg/vector3.hpp"
@@ -150,6 +151,43 @@ inline autolivery_core::Setpoint fromPositionTarget(
     sp.yaw = pt.yaw;
   }
   return sp;
+}
+
+// A wind the way meteorology gives it -- a speed and the compass direction it blows FROM --
+// as the velocity of the air in the world frame (x east, y north).
+inline autolivery_core::Vec3 windFromMeteorological(double speed, double from_deg)
+{
+  const double from = from_deg * autolivery_core::kPi / 180.0;
+  return {-speed * std::sin(from), -speed * std::cos(from), 0.0};
+}
+
+// The direction a wind blows from, degrees clockwise from north in [0, 360).
+inline double windDirection(const autolivery_core::Vec3 & wind)
+{
+  const double from = std::atan2(-wind.x, -wind.y) * 180.0 / autolivery_core::kPi;
+  return from < 0.0 ? from + 360.0 : from;
+}
+
+// A weather report as the mission wants it. Fields the report left out (NaN) stay unknown.
+inline autolivery_core::Weather weatherFromMsg(const autolivery_interfaces::msg::Weather & m)
+{
+  autolivery_core::Weather w;
+  if (std::isfinite(m.wind_speed) && m.wind_speed >= 0.0f) {
+    // "Light and variable" comes without a direction. The speed still counts against the
+    // limit; which way it blows only matters for timing, and at those speeds hardly at all.
+    w.wind = windFromMeteorological(
+      m.wind_speed, std::isfinite(m.wind_direction) ? m.wind_direction : 0.0);
+  }
+  if (std::isfinite(m.wind_gust) && m.wind_gust >= 0.0f) {
+    w.gust = m.wind_gust;
+  }
+  if (std::isfinite(m.precipitation) && m.precipitation >= 0.0f) {
+    w.precipitation = m.precipitation;
+  }
+  if (std::isfinite(m.temperature)) {
+    w.temperature = m.temperature;
+  }
+  return w;
 }
 
 }  // namespace autolivery_drone

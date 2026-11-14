@@ -22,3 +22,6 @@ string flight_mode
 float64 battery
 geometry_msgs/Point position
 string payload
+# Mean wind and strongest gust the mission is working with, m/s; negative when it has none.
+float64 wind
+float64 gust

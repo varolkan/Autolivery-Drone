@@ -45,12 +45,15 @@ class DeliveryClient:
             rclpy.spin_once(self.node, timeout_sec=0.1)
         return predicate()
 
-    def wait_until_vehicle_ready(self, timeout=90.0):
-        """Wait for what an operator checks before dispatching: link up, parcel loaded."""
+    def wait_until_vehicle_ready(self, timeout=90.0, payload='attached'):
+        """Wait for what an operator checks before dispatching: link up, parcel loaded.
+
+        Grippers without a payload sensor report 'unknown'; pass that for them.
+        """
         assert self.client.wait_for_server(timeout_sec=timeout), 'Deliver action server missing'
         assert self.spin_until(
             lambda: self.statuses and self.statuses[-1].connected
-            and self.statuses[-1].payload == 'attached', timeout), \
+            and self.statuses[-1].payload == payload, timeout), \
             f'vehicle never became ready: {self.last_status()}'
 
     def send(self, goal, timeout):

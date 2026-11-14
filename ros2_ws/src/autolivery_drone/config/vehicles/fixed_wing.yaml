@@ -23,5 +23,10 @@
       release_altitude: 30.0
       max_payload_kg: 0.5
       max_range: 40000.0
+      max_wind: 8.0
+      max_gust: 12.0
+      max_precipitation: 0.1
+      min_temperature: -10.0
+      max_temperature: 40.0
       px4_airframe: 4003
       sim_model: rc_cessna

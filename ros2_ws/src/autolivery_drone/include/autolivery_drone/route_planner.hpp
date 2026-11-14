@@ -1,5 +1,8 @@
 // The global planner the nodes use: A* or RRT* over the city map, followed by shortcut
 // smoothing and optional densification. Builds the voxel grid once, up front.
+//
+// With RRT* configured, a request it fails is retried with A*: the mission asks for routes in
+// flight (an abort, a go-around), where "the sampler was unlucky" is not an answer.
 
 #ifndef AUTOLIVERY_DRONE__ROUTE_PLANNER_HPP_
 #define AUTOLIVERY_DRONE__ROUTE_PLANNER_HPP_
@@ -24,7 +27,8 @@ public:
     std::shared_ptr<const autolivery_core::WorldMap> map, double clearance,
     PlannerSettings settings);
 
-  // `algorithm` overrides the configured default when non-empty.
+  // `algorithm` overrides the configured default when non-empty, and is then the only
+  // planner tried.
   autolivery_core::PlanResult plan(
     const autolivery_core::Vec3 & from, const autolivery_core::Vec3 & to,
     const std::string & algorithm = {}) const;
@@ -35,6 +39,9 @@ public:
   const autolivery_core::VoxelGrid & grid() const {return *grid_;}
 
 private:
+  autolivery_core::PlanResult planRrtStar(
+    const autolivery_core::Vec3 & from, const autolivery_core::Vec3 & to) const;
+
   std::shared_ptr<const autolivery_core::WorldMap> map_;
   double clearance_;
   PlannerSettings settings_;

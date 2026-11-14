@@ -4,6 +4,8 @@
 #ifndef TEST_SUPPORT_HPP_
 #define TEST_SUPPORT_HPP_
 
+#include <gtest/gtest.h>
+
 #include <algorithm>
 #include <cmath>
 #include <memory>
@@ -113,13 +115,25 @@ struct RunRecord
   std::vector<MissionState> states;  // distinct states in the order visited
   std::vector<std::string> events;
   bool requested_fw{false};
+  int releases_commanded{0};
   double end_time{0.0};
 };
 
 // Steps mission and vehicle together at 20 Hz until the mission finishes or time runs out.
 // `hook` runs before every tick and can change the vehicle (drain the battery, take over).
-template<typename Hook>
-RunRecord run(Mission & mission, FakeVehicle & vehicle, double max_time, Hook hook, double t0 = 0.0)
+// `gripper` stands in for the payload node: it is asked about every release the mission
+// commands and says what became of it. Only an accepted command reaches the vehicle.
+enum class Gripper
+{
+  Accepts,  // acknowledged, as the payload node does once the autopilot took the command
+  Refuses,  // answered with a failure (autopilot rejected it, service down)
+  Silent,   // no answer at all
+};
+
+template<typename Hook, typename GripperFn>
+RunRecord run(
+  Mission & mission, FakeVehicle & vehicle, double max_time, Hook hook, GripperFn gripper,
+  double t0 = 0.0)
 {
   RunRecord rec;
   const double dt = 0.05;
@@ -127,9 +141,24 @@ RunRecord run(Mission & mission, FakeVehicle & vehicle, double max_time, Hook ho
   rec.states.push_back(mission.state());
   while (t < t0 + max_time && !mission.finished()) {
     hook(t, vehicle, mission);
-    const MissionCommand cmd = mission.update(vehicle.snapshot(), t);
+    MissionCommand cmd = mission.update(vehicle.snapshot(), t);
     if (cmd.vtol == VtolRequest::Fw) {
       rec.requested_fw = true;
+    }
+    if (cmd.release) {
+      ++rec.releases_commanded;
+      switch (gripper(t)) {
+        case Gripper::Accepts:
+          mission.releaseAccepted();
+          break;
+        case Gripper::Refuses:
+          cmd.release = false;
+          mission.releaseFailed("refused by the autopilot");
+          break;
+        case Gripper::Silent:
+          cmd.release = false;
+          break;
+      }
     }
     vehicle.step(cmd, t, dt);
     if (rec.states.back() != mission.state()) {
@@ -144,9 +173,69 @@ RunRecord run(Mission & mission, FakeVehicle & vehicle, double max_time, Hook ho
   return rec;
 }
 
+template<typename Hook>
+RunRecord run(Mission & mission, FakeVehicle & vehicle, double max_time, Hook hook, double t0 = 0.0)
+{
+  return run(mission, vehicle, max_time, hook, [](double) {return Gripper::Accepts;}, t0);
+}
+
 inline RunRecord run(Mission & mission, FakeVehicle & vehicle, double max_time)
 {
   return run(mission, vehicle, max_time, [](double, FakeVehicle &, Mission &) {});
+}
+
+inline MissionConfig config()
+{
+  MissionConfig c;
+  c.home = kHome;
+  c.payload_feedback = true;
+  return c;
+}
+
+inline Mission makeMission(
+  const VehicleProfile & profile, const std::shared_ptr<WorldMap> & map,
+  MissionConfig cfg = config(), AvoidFn avoid = nullptr)
+{
+  return Mission(
+    profile, cfg, map, makePlanner(map, profile.planning_clearance), std::move(avoid));
+}
+
+inline bool visited(const RunRecord & r, MissionState s)
+{
+  return std::find(r.states.begin(), r.states.end(), s) != r.states.end();
+}
+
+inline bool visitedInOrder(const RunRecord & r, const std::vector<MissionState> & expected)
+{
+  auto it = r.states.begin();
+  for (auto s : expected) {
+    it = std::find(it, r.states.end(), s);
+    if (it == r.states.end()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+inline std::string dump(const RunRecord & r)
+{
+  std::string out;
+  for (const auto & e : r.events) {
+    out += "  " + e + "\n";
+  }
+  return out;
+}
+
+// No point of the flight may be inside a building, a tree or a no-fly zone.
+inline void expectNoCollisions(const FakeVehicle & v, const WorldMap & map)
+{
+  for (const auto & p : v.trajectory) {
+    if (p.z - map.groundHeight(p.x, p.y) < 0.3) {
+      continue;  // on the ground (depot pad, dropoff surface)
+    }
+    ASSERT_GT(map.distanceToObstacles(p), 0.3)
+      << "flew into an obstacle at (" << p.x << ", " << p.y << ", " << p.z << ")";
+  }
 }
 
 }  // namespace autolivery_test

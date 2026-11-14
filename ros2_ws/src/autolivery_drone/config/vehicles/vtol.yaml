@@ -21,5 +21,10 @@
       release_altitude: 4.0
       max_payload_kg: 1.5
       max_range: 30000.0
+      max_wind: 8.0
+      max_gust: 12.0
+      max_precipitation: 0.1
+      min_temperature: -10.0
+      max_temperature: 40.0
       px4_airframe: 4004
       sim_model: standard_vtol

@@ -12,16 +12,25 @@ What starts, in order:
   px4-param         sim-only parameter overrides once PX4 is up
   parameter_bridge  /clock and the gripper topics between Gazebo and ROS
   sim_traffic       other aircraft flying the map's traffic routes
+  sim_weather       the wind in the world, and the weather report the flight stack gets
   autolivery        MAVROS + mission/payload/planner nodes, simulated gripper
 
 Vehicles with a Gazebo model: quadcopter (x500), vtol (standard_vtol), fixed_wing
 (rc_cessna, from the airstrip depot). The vehicle is spawned on its depot pad because the
 flight stack takes PX4's local origin to be the depot.
+
+The world is calm unless told otherwise:
+
+    ros2 launch autolivery_gazebo sim.launch.py wind_speed:=6 wind_direction:=320 wind_gust:=9
+
+blows 6 m/s from the north-west with gusts to 9 and reports it on /autolivery/weather, so a
+wind over the vehicle's limit is refused; weather_report:=false blows without telling anyone.
 """
 
 import os
 
 from ament_index_python.packages import get_package_share_directory
+from autolivery_gazebo.city_map import position
 from autolivery_gazebo.sim_models import (
     GRIPPER_TOPICS, parcel_sdf, parcel_spawn_position, vehicle_sdf, VEHICLES)
 from launch import LaunchDescription
@@ -100,8 +109,7 @@ def _sim(context):
     depot_name = LaunchConfiguration('depot').perform(context) or params.get('depot', 'main')
     if depot_name not in city['depots']:
         raise RuntimeError(f"depot '{depot_name}' is not in {map_file}")
-    depot = city['depots'][depot_name]
-    depot = (depot[0], depot[1], depot[2] if len(depot) == 3 else 0.0)
+    depot = position(city, city['depots'][depot_name])
     world_name = city['name']
     world_file = os.path.join(share_gz, 'worlds', f'{world_name}.sdf')
 
@@ -167,6 +175,17 @@ def _sim(context):
         output='screen',
         parameters=[{'use_sim_time': True, 'map_file': map_file, 'world': world_name}],
     )
+    weather = Node(
+        package='autolivery_gazebo', executable='sim_weather_node', name='sim_weather',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True, 'world': world_name,
+            'wind_speed': float(LaunchConfiguration('wind_speed').perform(context)),
+            'wind_direction': float(LaunchConfiguration('wind_direction').perform(context)),
+            'wind_gust': float(LaunchConfiguration('wind_gust').perform(context)),
+            'report': LaunchConfiguration('weather_report').perform(context) == 'true',
+        }],
+    )
     stack = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(share_drone, 'launch', 'autolivery.launch.py')),
         launch_arguments={
@@ -201,6 +220,7 @@ def _sim(context):
         RegisterEventHandler(OnProcessExit(target_action=gazebo, on_exit=[
             EmitEvent(event=Shutdown(reason='Gazebo exited'))])),
         bridge,
+        weather,
         stack,
     ]
     if LaunchConfiguration('traffic').perform(context) == 'true':
@@ -227,6 +247,16 @@ def generate_launch_description():
             'headless', default_value='false', description='Run Gazebo without its GUI.'),
         DeclareLaunchArgument(
             'traffic', default_value='true', description='Fly the simulated traffic.'),
+        DeclareLaunchArgument(
+            'wind_speed', default_value='0.0', description='Mean wind in the world, m/s.'),
+        DeclareLaunchArgument(
+            'wind_direction', default_value='0.0',
+            description='Direction the wind blows from, degrees clockwise from north.'),
+        DeclareLaunchArgument(
+            'wind_gust', default_value='0.0', description='Strongest gust, m/s.'),
+        DeclareLaunchArgument(
+            'weather_report', default_value='true',
+            description='Report that wind on /autolivery/weather, as a depot station would.'),
         DeclareLaunchArgument('rviz', default_value='false', description='Open RViz.'),
         DeclareLaunchArgument(
             'px4_output', default_value='log',

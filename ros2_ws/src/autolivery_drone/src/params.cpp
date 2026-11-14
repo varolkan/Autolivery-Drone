@@ -58,6 +58,12 @@ autolivery_core::VehicleProfile declareVehicleProfile(rclcpp::Node & node)
     declare(node, "vehicle.release_altitude", p.release_altitude, "m above dropoff surface");
   p.max_payload_kg = declare(node, "vehicle.max_payload_kg", p.max_payload_kg, "kg");
   p.max_range = declare(node, "vehicle.max_range", p.max_range, "m of flight with reserve");
+  p.max_wind = declare(node, "vehicle.max_wind", p.max_wind, "m/s, mean wind it may fly in");
+  p.max_gust = declare(node, "vehicle.max_gust", p.max_gust, "m/s, gusts it may fly in");
+  p.max_precipitation =
+    declare(node, "vehicle.max_precipitation", p.max_precipitation, "mm/h it may fly in");
+  p.min_temperature = declare(node, "vehicle.min_temperature", p.min_temperature, "deg C");
+  p.max_temperature = declare(node, "vehicle.max_temperature", p.max_temperature, "deg C");
   p.px4_airframe = static_cast<int>(
     declare<int64_t>(node, "vehicle.px4_airframe", p.px4_airframe, "SYS_AUTOSTART"));
   p.sim_model = declare<std::string>(node, "vehicle.sim_model", "", "Gazebo model, if simulated");
@@ -92,6 +98,15 @@ autolivery_core::MissionConfig declareMissionConfig(rclcpp::Node & node)
     declare(node, "mission.air_drop_max_cross_track", c.air_drop_max_cross_track, "m");
   c.air_drop_attempts = static_cast<int>(
     declare<int64_t>(node, "mission.air_drop_attempts", c.air_drop_attempts, "passes"));
+  c.telemetry_timeout = declare(
+    node, "mission.telemetry_timeout", c.telemetry_timeout,
+    "s without link or position in flight before leaving the vehicle to the autopilot");
+  c.require_weather_report = declare(
+    node, "mission.require_weather_report", c.require_weather_report,
+    "Refuse deliveries without a current report on /autolivery/weather");
+  c.weather_abort_after = declare(
+    node, "mission.weather_abort_after", c.weather_abort_after,
+    "s of weather outside the vehicle's limits in flight before the delivery is abandoned");
   c.preflight_timeout = declare(node, "mission.preflight_timeout", c.preflight_timeout, "s");
   c.takeoff_timeout = declare(node, "mission.takeoff_timeout", c.takeoff_timeout, "s");
   c.descend_timeout = declare(node, "mission.descend_timeout", c.descend_timeout, "s");

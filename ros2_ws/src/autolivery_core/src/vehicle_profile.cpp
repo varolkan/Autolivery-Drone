@@ -77,6 +77,22 @@ std::string toString(DropoffMethod m)
   return "unknown";
 }
 
+double VehicleProfile::groundSpeed(const Vec3 & course, const Vec3 & wind) const
+{
+  // Along its course a vehicle gains or loses the wind's along-track part, and holding the
+  // course against the cross-track part costs airspeed as well. A multirotor is told a ground
+  // speed and makes it for as long as that takes no more airspeed than it has; a wing flies
+  // its airspeed and gets what is left.
+  constexpr double kSlowest = 1.0;
+  const double along = wind.dot(course);
+  const double cross = (wind - course * along).horizontalNorm();
+  const double airspeed = legAirspeed();
+  const double made_good =
+    cross < airspeed ? std::sqrt(airspeed * airspeed - cross * cross) + along : 0.0;
+  const bool multicopter = vehicle_class == VehicleClass::Multicopter;
+  return std::max(kSlowest, multicopter ? std::min(cruise_speed, made_good) : made_good);
+}
+
 std::vector<std::string> validate(const VehicleProfile & p)
 {
   std::vector<std::string> problems;
@@ -110,6 +126,24 @@ std::vector<std::string> validate(const VehicleProfile & p)
   }
   if (p.takeoff_altitude > p.cruise_altitude) {
     problems.push_back("takeoff_altitude must not exceed cruise_altitude");
+  }
+
+  positive(p.max_wind, "max_wind");
+  if (p.max_gust < p.max_wind || !std::isfinite(p.max_gust)) {
+    problems.push_back("max_gust must be at least max_wind");
+  }
+  if (p.max_wind >= p.legAirspeed()) {
+    // In a wind as fast as the vehicle it stands still over the ground, or goes backwards.
+    problems.push_back(
+      std::string("max_wind must be below ") +
+      (p.vehicle_class == VehicleClass::Multicopter ? "max_speed" : "cruise_speed") +
+      ": the vehicle cannot make headway against a wind it cannot outfly");
+  }
+  if (!(p.max_precipitation >= 0.0) || !std::isfinite(p.max_precipitation)) {
+    problems.push_back("max_precipitation must not be negative");
+  }
+  if (!(p.min_temperature < p.max_temperature)) {
+    problems.push_back("min_temperature must be below max_temperature");
   }
 
   switch (p.vehicle_class) {

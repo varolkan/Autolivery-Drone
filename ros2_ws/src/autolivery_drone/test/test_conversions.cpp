@@ -63,6 +63,66 @@ TEST(Conversions, MavrosEnumsRoundTrip)
   }
 }
 
+TEST(Conversions, WindFromTheCompassIsAirMovingTheOtherWay)
+{
+  // A westerly comes from 270 and moves the air east; a northerly moves it south.
+  Vec3 w = windFromMeteorological(10.0, 270.0);
+  EXPECT_NEAR(w.x, 10.0, 1e-9);
+  EXPECT_NEAR(w.y, 0.0, 1e-9);
+  w = windFromMeteorological(10.0, 0.0);
+  EXPECT_NEAR(w.x, 0.0, 1e-9);
+  EXPECT_NEAR(w.y, -10.0, 1e-9);
+  w = windFromMeteorological(10.0, 90.0);
+  EXPECT_NEAR(w.x, -10.0, 1e-9);
+  w = windFromMeteorological(10.0, 180.0);
+  EXPECT_NEAR(w.y, 10.0, 1e-9);
+  for (double from : {0.0, 45.0, 123.0, 270.0, 359.0}) {
+    EXPECT_NEAR(windDirection(windFromMeteorological(7.0, from)), from, 1e-6);
+  }
+}
+
+TEST(Conversions, WeatherReportKeepsWhatWasReportedAndNothingElse)
+{
+  const float not_reported = std::numeric_limits<float>::quiet_NaN();
+  autolivery_interfaces::msg::Weather m;
+  m.wind_speed = 6.0f;
+  m.wind_direction = 315.0f;  // a north-westerly: towards the south-east
+  m.wind_gust = 9.5f;
+  m.precipitation = 0.4f;
+  m.temperature = -3.5f;
+  auto w = weatherFromMsg(m);
+  ASSERT_TRUE(w.wind.has_value());
+  EXPECT_NEAR(w.wind->horizontalNorm(), 6.0, 1e-5);
+  EXPECT_NEAR(w.wind->x, 6.0 / std::sqrt(2.0), 1e-5);
+  EXPECT_NEAR(w.wind->y, -6.0 / std::sqrt(2.0), 1e-5);
+  EXPECT_FLOAT_EQ(static_cast<float>(w.gust), 9.5f);
+  EXPECT_FLOAT_EQ(static_cast<float>(w.precipitation), 0.4f);
+  EXPECT_FLOAT_EQ(static_cast<float>(w.temperature), -3.5f);
+
+  // A report with nothing in it says nothing, rather than "calm, dry and 0 C".
+  m.wind_speed = m.wind_direction = m.wind_gust = m.precipitation = m.temperature = not_reported;
+  w = weatherFromMsg(m);
+  EXPECT_FALSE(w.wind.has_value());
+  EXPECT_LT(w.gust, 0.0);
+  EXPECT_LT(w.precipitation, 0.0);
+  EXPECT_TRUE(std::isnan(w.temperature));
+
+  // "Light and variable": a speed with no direction still counts as a speed.
+  m.wind_speed = 1.5f;
+  w = weatherFromMsg(m);
+  ASSERT_TRUE(w.wind.has_value());
+  EXPECT_NEAR(w.wind->horizontalNorm(), 1.5, 1e-6);
+
+  // A negative reading is a broken sensor, not a reading.
+  m.wind_speed = -1.0f;
+  m.wind_gust = -5.0f;
+  m.precipitation = -0.1f;
+  w = weatherFromMsg(m);
+  EXPECT_FALSE(w.wind.has_value());
+  EXPECT_LT(w.gust, 0.0);
+  EXPECT_LT(w.precipitation, 0.0);
+}
+
 TEST(Conversions, YawQuaternion)
 {
   for (double yaw : {0.0, 0.5, -2.0, 3.0}) {

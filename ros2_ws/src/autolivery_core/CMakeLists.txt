@@ -58,6 +58,7 @@ if(BUILD_TESTING)
     test_avoidance
     test_profiles_and_gripper
     test_mission
+    test_weather
   )
   foreach(t ${core_tests})
     ament_add_gtest(${t} test/${t}.cpp TIMEOUT 300)

@@ -21,6 +21,9 @@
       air_drop_latency: 0.25
       air_drop_max_cross_track: 10.0
       air_drop_attempts: 2
+      telemetry_timeout: 3.0
+      require_weather_report: false
+      weather_abort_after: 5.0
       preflight_timeout: 90.0
       takeoff_timeout: 90.0
       descend_timeout: 60.0

@@ -26,7 +26,15 @@ target_link_libraries(sim_traffic_node
   gz-transport::core
   rclcpp::rclcpp
 )
-install(TARGETS sim_traffic_node DESTINATION lib/${PROJECT_NAME})
+add_executable(sim_weather_node src/sim_weather_node.cpp)
+target_link_libraries(sim_weather_node
+  autolivery_drone::autolivery_drone_common
+  ${autolivery_interfaces_TARGETS}
+  gz-msgs::core
+  gz-transport::core
+  rclcpp::rclcpp
+)
+install(TARGETS sim_traffic_node sim_weather_node DESTINATION lib/${PROJECT_NAME})
 
 ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS scripts/generate_world.py DESTINATION lib/${PROJECT_NAME})

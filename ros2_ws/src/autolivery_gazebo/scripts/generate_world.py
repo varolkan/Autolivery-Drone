@@ -34,6 +34,13 @@ PLUGINS = [
     ('gz-sim-magnetometer-system', 'gz::sim::systems::Magnetometer'),
 ]
 
+# Wind. Gazebo's WindEffects system pushes on every link that has wind enabled with
+# mass * factor * (wind - link velocity): linear drag. At 0.5 /s a multirotor leans about
+# 20 degrees into an 8 m/s wind and is carried off at about 20 m/s -- roughly twice the drag
+# of a real airframe of this size at the wind speeds it may fly in, so the simulation errs on
+# the windy side. The world starts calm; sim_weather_node sets the wind at run time.
+WIND_DRAG_FACTOR = 0.5
+
 # Facade colours, picked per building by index so the city is readable from above.
 FACADES = [
     (0.66, 0.68, 0.72), (0.78, 0.74, 0.66), (0.55, 0.60, 0.68), (0.72, 0.62, 0.55),
@@ -262,6 +269,13 @@ def generate(city):
         '    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">',
         '      <render_engine>ogre2</render_engine>',
         '    </plugin>',
+        '    <plugin filename="gz-sim-wind-effects-system" name="gz::sim::systems::WindEffects">',
+        '      <force_approximation_scaling_factor>'
+        f'{f(WIND_DRAG_FACTOR)}</force_approximation_scaling_factor>',
+        '    </plugin>',
+        '    <wind>',
+        '      <linear_velocity>0 0 0</linear_velocity>',
+        '    </wind>',
         '    <gravity>0 0 -9.8</gravity>',
         '    <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>',
         '    <atmosphere type="adiabatic"/>',

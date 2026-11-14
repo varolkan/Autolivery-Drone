@@ -185,6 +185,58 @@ TEST(CityMap, BothPlannersRouteAcrossTheCity)
   EXPECT_FALSE(planner.plan(from, to, "dijkstra").success);
 }
 
+TEST(CityMap, ConfiguredRrtStarFallsBackToAStar)
+{
+  // One sample is not enough for RRT* to get round the hotel. As the mission's planner that
+  // must still produce a route (from A*); asked for by name it reports its own failure.
+  const CityMap city = loadCityMap(sourcePath("/maps/urban_delivery.yaml"));
+  autolivery_drone::PlannerSettings settings;
+  settings.algorithm = "rrt_star";
+  settings.rrt.seed = 3;
+  settings.rrt.max_iterations = 1;
+  autolivery_drone::RoutePlanner planner(city.world, 4.0, settings);
+  const Vec3 from{0.0, 0.0, 40.0};
+  const Vec3 to{215.0, 78.0, 40.0};
+
+  const auto named = planner.plan(from, to, "rrt_star");
+  EXPECT_FALSE(named.success);
+
+  const auto r = planner.plan(from, to);
+  ASSERT_TRUE(r.success) << r.message;
+  EXPECT_NE(r.message.find("by astar"), std::string::npos) << r.message;
+  for (std::size_t i = 1; i < r.path.size(); ++i) {
+    EXPECT_TRUE(city.world->segmentClear(r.path[i - 1], r.path[i], 4.0));
+  }
+  const auto fn = planner.asPlanFn();
+  EXPECT_TRUE(fn(from, to).success);
+}
+
+TEST(CityMap, RrtStarPlansFromInsideAClearanceMargin)
+{
+  // 2.5 m off the office tower's west wall, inside the 4 m planning clearance: where a
+  // vehicle ends up after dodging traffic. RRT* alone can grow nothing from there.
+  const CityMap city = loadCityMap(sourcePath("/maps/urban_delivery.yaml"));
+  autolivery_drone::PlannerSettings settings;
+  settings.rrt.seed = 3;
+  autolivery_drone::RoutePlanner planner(city.world, 4.0, settings);
+  const Vec3 from{37.5, 50.0, 40.0};
+  const Vec3 to{0.0, 0.0, 40.0};
+  ASSERT_TRUE(city.world->isBlocked(from, 4.0));
+  ASSERT_FALSE(city.world->isBlocked(from, 0.6));
+
+  const auto r = planner.plan(from, to, "rrt_star");
+  ASSERT_TRUE(r.success) << r.message;
+  ASSERT_GE(r.path.size(), 2u);
+  EXPECT_NEAR(autolivery_core::distance(r.path.front(), from), 0.0, 1e-9);
+  EXPECT_NEAR(autolivery_core::distance(r.path.back(), to), 0.0, 1e-9);
+  // The first hop leaves the margin (and stays off the wall itself); the rest is clear.
+  EXPECT_TRUE(city.world->segmentClear(r.path[0], r.path[1], 0.6));
+  EXPECT_LT(autolivery_core::distance(r.path[0], r.path[1]), 10.0);
+  for (std::size_t i = 2; i < r.path.size(); ++i) {
+    EXPECT_TRUE(city.world->segmentClear(r.path[i - 1], r.path[i], 4.0));
+  }
+}
+
 TEST(CityMap, BadFilesFailLoudly)
 {
   EXPECT_THROW(loadCityMap("/nonexistent/map.yaml"), std::runtime_error);

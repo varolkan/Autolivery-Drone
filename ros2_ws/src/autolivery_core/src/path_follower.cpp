@@ -43,9 +43,12 @@ PathFollower::Progress PathFollower::update(
     // one. Without this a vehicle that turns wide (a plane, or anything pushed off the path by
     // avoidance) can join the next leg without ever passing the end of this one or coming
     // within `acceptance` of the corner, and then the carrot keeps dragging it back.
+    // "Closer" has to be by a real margin: where a route doubles back on itself the two legs
+    // lie on top of each other, and a tie decided by rounding would skip the whole way out.
+    constexpr double kCloserBy = 1.0;
     const double t_next = projectOntoSegment(position, b, c);
     if (t_next > 0.0 &&
-      distance(position, lerp(b, c, t_next)) < distance(position, lerp(a, b, t)))
+      distance(position, lerp(b, c, t_next)) + kCloserBy < distance(position, lerp(a, b, t)))
     {
       ++segment_;
       continue;

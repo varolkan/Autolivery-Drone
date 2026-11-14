@@ -7,6 +7,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 from ament_index_python.packages import get_package_share_directory
+from autolivery_gazebo.city_map import position, surface_height
 from autolivery_gazebo.sim_models import parcel_sdf, parcel_spawn_position, vehicle_sdf, VEHICLES
 import pytest
 import yaml
@@ -60,6 +61,14 @@ def test_px4_sensor_systems_are_loaded(world):
         assert required in loaded
 
 
+def test_world_can_be_made_windy(world):
+    # The world starts calm and carries the system sim_weather_node drives the wind through.
+    plugin = next(
+        p for p in world.findall('plugin') if p.get('filename') == 'gz-sim-wind-effects-system')
+    assert float(plugin.find('force_approximation_scaling_factor').text) > 0.0
+    assert floats(world.find('wind/linear_velocity').text) == [0.0, 0.0, 0.0]
+
+
 def test_every_building_collides_exactly_where_the_planner_thinks(city, world):
     by_name = models(world)
     for b in city['buildings']:
@@ -100,6 +109,26 @@ def test_every_depot_location_and_traffic_route_has_a_model(city, world):
         assert model.find('static').text == 'true'
 
 
+def test_vehicles_are_spawned_on_the_surface_the_world_has_there(city, world):
+    # A depot or location given as [x, y] is wherever the map's surface is. The launch file
+    # (city_map.position) and the world generator have to agree on that height, or a vehicle
+    # whose depot is on a roof or a rise is spawned inside it.
+    by_name = models(world)
+    for kind, entries in (('depot', city['depots']), ('dropoff', city['locations'])):
+        for name, where in entries.items():
+            pad = floats(by_name[f'{kind}_{name}'].find('pose').text)[:3]
+            assert position(city, where) == pytest.approx(pad, abs=1e-3), name
+    assert position(city, city['locations']['rooftop_cafe'])[2] == pytest.approx(18.0)
+
+    hill = {'geofence': {'min': [-50, -50, 0], 'max': [50, 50, 100]},
+            'buildings': [{'name': 'rise', 'min': [-10, -10, 0], 'max': [10, 10, 7.5]}],
+            'cylinders': [{'name': 'mast', 'base': [30, 0, 0], 'radius': 1.0, 'height': 20.0}]}
+    assert position(hill, [0.0, 0.0]) == (0.0, 0.0, 7.5)       # on the rise, not inside it
+    assert position(hill, [0.0, 0.0, 2.0]) == (0.0, 0.0, 2.0)  # an explicit height stands
+    assert surface_height(hill, 30.5, 0.0) == 20.0
+    assert surface_height(hill, 40.0, 40.0) == 0.0
+
+
 @pytest.mark.skipif(shutil.which('gz') is None, reason='gz not installed')
 def test_world_is_valid_sdf():
     result = subprocess.run(['gz', 'sdf', '-k', WORLD], capture_output=True, text=True)
@@ -117,6 +146,13 @@ def test_vehicle_and_parcel_sdf(key):
     assert joint.get('name') == 'gz::sim::systems::DetachableJoint'
     assert joint.find('child_model').text == 'p'
     assert joint.find('parent_link').text == 'base_link'
+
+    # Only an airframe without aerodynamics of its own gets Gazebo's wind drag; on a plane it
+    # would be a second, made-up drag on top of the real one.
+    has_wings = sim.base_model in ('standard_vtol', 'rc_cessna')
+    assert (model.find('enable_wind') is not None) == (not has_wings)
+    if not has_wings:
+        assert model.find('enable_wind').text == 'true'
 
     parcel = ET.fromstring(parcel_sdf(sim, 'p')).find('model/link')
     assert float(parcel.find('inertial/mass').text) == pytest.approx(sim.parcel_mass)

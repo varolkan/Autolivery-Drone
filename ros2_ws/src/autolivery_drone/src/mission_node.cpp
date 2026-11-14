@@ -2,17 +2,25 @@
 //
 //   Deliver action goal -> Mission (autolivery_core) -> setpoints, mode/arming/VTOL requests,
 //                                                        gripper release
-//   /mavros state, pose, velocity, battery, payload state, obstacles -> VehicleSnapshot
+//   /mavros state, pose, velocity, battery, payload state, obstacles,
+//   the weather report and the autopilot's wind estimate          -> VehicleSnapshot
 //
 // Everything that decides *what* to do lives in autolivery_core::Mission; this node only
 // translates. A few things about the translation matter for safety:
 //
 //  * Setpoints are streamed from a timer at `control_rate` for as long as the mission wants
 //    them. PX4 leaves OFFBOARD (and fails safe) if the stream drops below 2 Hz, so nothing in
-//    the timer callback blocks: every service call is asynchronous and rate-limited.
-//  * Vehicle state older than `pose_timeout`/`state_timeout` is treated as missing, which the
-//    mission handles as "not ready" before takeoff and cannot mistake for a valid position
-//    in flight.
+//    the timer callback blocks it: every service call is asynchronous and rate-limited, with
+//    a deadline of its own, and a route planned in flight is computed on another thread
+//    while the tick keeps the stream going (keep_alive.hpp).
+//  * Vehicle state older than `pose_timeout`/`state_timeout` is treated as missing. Before
+//    takeoff the mission takes that as "not ready"; in flight it holds the vehicle and, if
+//    the data stays away, ends the mission and leaves the vehicle to the autopilot.
+//  * The gripper's answer to every release goes back to the mission. Without a payload
+//    sensor that answer is the only evidence the parcel left, so no answer is a failure.
+//  * The weather comes from outside: a station, a forecast feed or the operator publishes
+//    autolivery/weather, and a report older than `weather_timeout` is no report. In flight
+//    the autopilot's own wind estimate counts as well, where it has one.
 //  * Subscriptions to MAVROS use SensorDataQoS (best effort). A best-effort subscription is
 //    compatible with any publisher, whereas a reliable one silently receives nothing from
 //    MAVROS topics that are published best effort -- and a mission node that never hears
@@ -34,6 +42,7 @@
 #include "autolivery_core/velocity_obstacle.hpp"
 #include "autolivery_drone/city_map.hpp"
 #include "autolivery_drone/conversions.hpp"
+#include "autolivery_drone/keep_alive.hpp"
 #include "autolivery_drone/node_main.hpp"
 #include "autolivery_drone/params.hpp"
 #include "autolivery_drone/route_planner.hpp"
@@ -41,8 +50,10 @@
 #include "autolivery_interfaces/msg/mission_status.hpp"
 #include "autolivery_interfaces/msg/obstacle_array.hpp"
 #include "autolivery_interfaces/msg/payload_state.hpp"
+#include "autolivery_interfaces/msg/weather.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/twist_stamped.hpp"
+#include "geometry_msgs/msg/twist_with_covariance_stamped.hpp"
 #include "mavros_msgs/msg/extended_state.hpp"
 #include "mavros_msgs/msg/position_target.hpp"
 #include "mavros_msgs/msg/state.hpp"
@@ -70,6 +81,7 @@ using autolivery_core::VtolState;
 using Deliver = autolivery_interfaces::action::Deliver;
 using GoalHandle = rclcpp_action::ServerGoalHandle<Deliver>;
 using PayloadMsg = autolivery_interfaces::msg::PayloadState;
+using WeatherMsg = autolivery_interfaces::msg::Weather;
 
 class MissionNode : public AutoliveryNode
 {
@@ -115,10 +127,12 @@ public:
     const double rate = declare_parameter("control_rate", 20.0);
     pose_timeout_ = declare_parameter("pose_timeout", 0.5);
     state_timeout_ = declare_parameter("state_timeout", 2.0);
+    weather_timeout_ = declare_parameter("weather_timeout", 120.0);
     const auto mavros = declare_parameter<std::string>("mavros_namespace", "mavros");
     if (!(rate >= 5.0)) {
       throw std::runtime_error("control_rate must be at least 5 Hz (PX4 needs > 2 Hz setpoints)");
     }
+    control_period_ = std::chrono::duration<double>(1.0 / rate);
 
     route_planner_ = std::make_unique<RoutePlanner>(
       city_.world, profile_.planning_clearance, planner_settings);
@@ -130,7 +144,8 @@ public:
         };
     }
     mission_ = std::make_unique<Mission>(
-      profile_, mission_config, city_.world, route_planner_->asPlanFn(), avoid);
+      profile_, mission_config, city_.world,
+      [this](const Vec3 & from, const Vec3 & to) {return plan(from, to);}, avoid);
 
     const auto sensor = rclcpp::SensorDataQoS();
     state_sub_ = create_subscription<mavros_msgs::msg::State>(
@@ -165,6 +180,17 @@ public:
       "autolivery/payload/state", 10, [this](PayloadMsg::ConstSharedPtr m) {
         payload_ = *m;
         payload_time_ = nowSeconds();
+      });
+    weather_sub_ = create_subscription<WeatherMsg>(
+      "autolivery/weather", 10, [this](WeatherMsg::ConstSharedPtr m) {
+        weather_ = weatherFromMsg(*m);
+        weather_time_ = nowSeconds();
+      });
+    wind_estimate_sub_ = create_subscription<geometry_msgs::msg::TwistWithCovarianceStamped>(
+      mavros + "/wind_estimation", sensor,
+      [this](geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr m) {
+        wind_estimate_ = toVec3(m->twist.twist.linear);
+        wind_estimate_time_ = nowSeconds();
       });
     obstacle_sub_ = create_subscription<autolivery_interfaces::msg::ObstacleArray>(
       "autolivery/obstacles", 10,
@@ -201,8 +227,7 @@ public:
       },
       [this](const std::shared_ptr<GoalHandle> gh) {onGoalAccepted(gh);});
 
-    timer_ = rclcpp::create_timer(
-      this, get_clock(), std::chrono::duration<double>(1.0 / rate), [this]() {tick();});
+    timer_ = rclcpp::create_timer(this, get_clock(), control_period_, [this]() {tick();});
 
     RCLCPP_INFO(
       get_logger(),
@@ -213,6 +238,13 @@ public:
       autolivery_core::toString(gripper_.type).c_str(), depot_name.c_str(), depot_.x, depot_.y,
       city_.name.c_str(), city_.locations.size(), planner_settings.algorithm.c_str(),
       planner_settings.resolution, avoidance_.enabled ? "on" : "off");
+    RCLCPP_INFO(
+      get_logger(),
+      "weather limits: wind %.1f m/s, gusts %.1f m/s, precipitation %.1f mm/h, %.0f to %.0f C; "
+      "a report on autolivery/weather is %s", profile_.max_wind, profile_.max_gust,
+      profile_.max_precipitation, profile_.min_temperature, profile_.max_temperature,
+      mission_config.require_weather_report ? "required" :
+      "not required (deliveries without one fly unchecked)");
   }
 
   ~MissionNode() override
@@ -257,6 +289,23 @@ private:
       s.payload = payload_.state == PayloadMsg::ATTACHED ? autolivery_core::PayloadState::Attached :
         payload_.state == PayloadMsg::RELEASED ? autolivery_core::PayloadState::Released :
         autolivery_core::PayloadState::Unknown;
+    }
+    if (weather_time_ >= 0.0 && t - weather_time_ <= weather_timeout_) {
+      s.weather = weather_;
+    }
+    // The station is at the depot; the autopilot's estimate is of the air the vehicle is in.
+    // Once flying, the stronger of the two is the one to respect.
+    if (isAirborne() && wind_estimate_time_ >= 0.0 && t - wind_estimate_time_ <= 5.0 &&
+      wind_estimate_.isFinite())
+    {
+      if (!s.weather) {
+        s.weather.emplace();
+      }
+      if (!s.weather->wind ||
+        wind_estimate_.horizontalNorm() > s.weather->wind->horizontalNorm())
+      {
+        s.weather->wind = wind_estimate_.horizontal();
+      }
     }
     return s;
   }
@@ -344,8 +393,19 @@ private:
   {
     const double t = nowSeconds();
     const VehicleSnapshot s = snapshot(t);
-    if (runway_ && !landing_pattern_ready_ && s.connected && !mission_->active()) {
-      uploadLandingPattern(t);
+    if (runway_ && !mission_->active()) {
+      if (!s.connected) {
+        // The autopilot went away while idle (a reboot, a pulled cable). Whatever comes back
+        // may not hold the landing pattern any more, so it is sent again.
+        landing_pattern_ready_ = false;
+      } else if (!landing_pattern_ready_) {
+        uploadLandingPattern(t);
+      }
+    }
+    if (release_pending_ && t - release_sent_ > kReleaseAnswerTimeout) {
+      release_pending_ = false;
+      RCLCPP_WARN(get_logger(), "release failed: no answer from the payload node");
+      mission_->releaseFailed("no answer from the payload node");
     }
     const MissionCommand cmd = mission_->update(s, t);
     for (const auto & e : mission_->takeEvents()) {
@@ -381,11 +441,9 @@ private:
 
   void execute(const MissionCommand & cmd, const VehicleSnapshot & s, double t)
   {
-    if (cmd.setpoint.kind != Setpoint::Kind::None) {
-      auto pt = toPositionTarget(cmd.setpoint, depot_);
-      pt.header.stamp = now();
-      pt.header.frame_id = "map";
-      setpoint_pub_->publish(pt);
+    streaming_ = cmd.setpoint.kind != Setpoint::Kind::None;
+    if (streaming_) {
+      publishSetpoint(toPositionTarget(cmd.setpoint, depot_));
     }
     if (!cmd.mode.empty() && cmd.mode != s.mode) {
       requestMode(cmd.mode, t);
@@ -403,17 +461,53 @@ private:
       }
     }
     if (cmd.release) {
-      requestRelease();
+      requestRelease(t);
     }
+  }
+
+  void publishSetpoint(mavros_msgs::msg::PositionTarget pt)
+  {
+    pt.header.stamp = now();
+    pt.header.frame_id = "map";
+    setpoint_pub_->publish(pt);
+    last_setpoint_ = pt;
+  }
+
+  // What to stream while the mission is busy planning and cannot steer: a velocity setpoint
+  // becomes "stop", a position setpoint is a fixed place and stays.
+  static mavros_msgs::msg::PositionTarget holdSetpoint(mavros_msgs::msg::PositionTarget pt)
+  {
+    using PT = mavros_msgs::msg::PositionTarget;
+    if ((pt.type_mask & (PT::IGNORE_VX | PT::IGNORE_VY | PT::IGNORE_VZ)) == 0) {
+      pt.velocity = geometry_msgs::msg::Vector3();
+      pt.type_mask |= PT::IGNORE_YAW;
+    }
+    return pt;
+  }
+
+  // The mission's planner. On the ground it is a plain call. With the vehicle flying on our
+  // setpoints the route is computed on a helper thread and this one keeps the stream alive,
+  // so a slow plan cannot trip PX4's offboard-loss failsafe (see keep_alive.hpp).
+  autolivery_core::PlanResult plan(const Vec3 & from, const Vec3 & to)
+  {
+    if (!streaming_) {
+      return route_planner_->plan(from, to);
+    }
+    return runWithKeepAlive<autolivery_core::PlanResult>(
+      [&]() {return route_planner_->plan(from, to);},
+      [this]() {publishSetpoint(holdSetpoint(last_setpoint_));},
+      control_period_, kMaxPlanKeepAlive);
   }
 
   // Service requests. Each kind has at most one call in flight and at most one per second:
   // MAVROS forwards every call to the autopilot, and a mission that asks for OFFBOARD at
-  // 20 Hz while PX4 is still refusing it floods the link and the log.
-  bool mayRequest(const std::string & key, double t)
+  // 20 Hz while PX4 is still refusing it floods the link and the log. A call that has not
+  // come back after `give_up` seconds is written off (MAVROS restarted, the answer was lost)
+  // rather than left to block that kind of request for the rest of the flight.
+  bool mayRequest(const std::string & key, double t, double give_up = 3.0)
   {
     auto & last = last_request_[key];
-    if (in_flight_[key] || t - last < 1.0) {
+    if (t - last < 1.0 || (in_flight_[key] && t - last < give_up)) {
       return false;
     }
     last = t;
@@ -487,19 +581,30 @@ private:
       });
   }
 
-  void requestRelease()
+  void requestRelease(double t)
   {
     if (!release_client_->service_is_ready()) {
       RCLCPP_ERROR(get_logger(), "payload release service is not available");
+      mission_->releaseFailed("payload release service is not available");
       return;
     }
     RCLCPP_INFO(get_logger(), "releasing parcel");
+    const unsigned id = ++release_id_;
+    release_sent_ = t;
+    release_pending_ = true;
     release_client_->async_send_request(
       std::make_shared<std_srvs::srv::Trigger::Request>(),
-      [this](rclcpp::Client<std_srvs::srv::Trigger>::SharedFuture f) {
+      [this, id](rclcpp::Client<std_srvs::srv::Trigger>::SharedFuture f) {
+        if (id != release_id_ || !release_pending_) {
+          return;  // the answer to a request that was already given up on or superseded
+        }
+        release_pending_ = false;
         const auto r = f.get();
-        if (!r->success) {
+        if (r->success) {
+          mission_->releaseAccepted();
+        } else {
           RCLCPP_WARN(get_logger(), "release failed: %s", r->message.c_str());
+          mission_->releaseFailed(r->message);
         }
       });
   }
@@ -508,8 +613,9 @@ private:
   // altitude, straight-in NAV_LAND. With RTL_TYPE 1 (PX4's fixed-wing default) RTL flies it.
   void uploadLandingPattern(double t)
   {
-    if (!mission_push_client_->service_is_ready() || in_flight_["mission"] ||
-      t - last_request_["mission"] < 5.0)
+    const double since = t - last_request_["mission"];
+    if (!mission_push_client_->service_is_ready() || since < 5.0 ||
+      (in_flight_["mission"] && since < 30.0))
     {
       return;
     }
@@ -607,6 +713,8 @@ private:
     msg.position = toPoint(s.position);
     msg.payload = s.payload == autolivery_core::PayloadState::Attached ? "attached" :
       s.payload == autolivery_core::PayloadState::Released ? "released" : "unknown";
+    msg.wind = s.weather && s.weather->wind ? s.weather->wind->horizontalNorm() : -1.0;
+    msg.gust = s.weather ? s.weather->gust : -1.0;
     status_pub_->publish(msg);
   }
 
@@ -657,6 +765,13 @@ private:
   bool landing_pattern_ready_{false};
   double pose_timeout_{0.5};
   double state_timeout_{2.0};
+  double weather_timeout_{120.0};
+  std::chrono::duration<double> control_period_{0.05};
+  // payload_node answers within its own command deadline (a few seconds); longer than this
+  // and it is not going to.
+  static constexpr double kReleaseAnswerTimeout = 10.0;
+  // Longest the setpoint stream is kept alive for a route being planned in flight.
+  static constexpr std::chrono::seconds kMaxPlanKeepAlive{5};
 
   std::unique_ptr<RoutePlanner> route_planner_;
   std::unique_ptr<autolivery_core::VelocityObstacleAvoider> avoider_;
@@ -675,11 +790,20 @@ private:
   double battery_time_{-1.0};
   PayloadMsg payload_;
   double payload_time_{-1.0};
+  autolivery_core::Weather weather_;
+  double weather_time_{-1.0};
+  Vec3 wind_estimate_;
+  double wind_estimate_time_{-1.0};
   std::map<std::string,
     std::pair<double, std::vector<autolivery_core::DynamicObstacle>>> obstacles_;
 
   std::map<std::string, double> last_request_;
   std::map<std::string, bool> in_flight_;
+  bool streaming_{false};       // the last tick published a setpoint
+  mavros_msgs::msg::PositionTarget last_setpoint_;
+  bool release_pending_{false};  // a release request is waiting for its answer
+  double release_sent_{0.0};
+  unsigned release_id_{0};
   std::shared_ptr<GoalHandle> goal_;
   std::string dropoff_label_;
   std::size_t published_path_size_{0};
@@ -694,6 +818,9 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr velocity_sub_;
   rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr battery_sub_;
   rclcpp::Subscription<PayloadMsg>::SharedPtr payload_sub_;
+  rclcpp::Subscription<WeatherMsg>::SharedPtr weather_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr
+    wind_estimate_sub_;
   rclcpp::Subscription<autolivery_interfaces::msg::ObstacleArray>::SharedPtr obstacle_sub_;
   rclcpp::Publisher<mavros_msgs::msg::PositionTarget>::SharedPtr setpoint_pub_;
   rclcpp::Publisher<autolivery_interfaces::msg::MissionStatus>::SharedPtr status_pub_;

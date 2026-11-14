@@ -41,6 +41,7 @@ target_link_libraries(${PROJECT_NAME}_common PUBLIC
   ament_index_cpp::ament_index_cpp
   rclcpp::rclcpp
   yaml-cpp::yaml-cpp
+  ${autolivery_interfaces_TARGETS}
   ${geometry_msgs_TARGETS}
   ${mavros_msgs_TARGETS}
 )
@@ -78,7 +79,8 @@ install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME})
 install(TARGETS ${PROJECT_NAME}_common EXPORT export_${PROJECT_NAME} ARCHIVE DESTINATION lib)
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 ament_export_dependencies(
-  ament_index_cpp autolivery_core geometry_msgs mavros_msgs rclcpp yaml_cpp_vendor yaml-cpp)
+  ament_index_cpp autolivery_core autolivery_interfaces geometry_msgs mavros_msgs rclcpp
+  yaml_cpp_vendor yaml-cpp)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
@@ -107,9 +109,14 @@ if(BUILD_TESTING)
   ament_add_gtest(test_node_main test/test_node_main.cpp TIMEOUT 120)
   target_link_libraries(test_node_main ${PROJECT_NAME}_common)
 
+  ament_add_gtest(test_keep_alive test/test_keep_alive.cpp)
+  target_link_libraries(test_keep_alive ${PROJECT_NAME}_common)
+
   # Full ROS graph against the fake flight controller: action in, parcel out.
   add_launch_test(test/test_dry_run_delivery.py TIMEOUT 600)
   add_launch_test(test/test_dry_run_failsafes.py TIMEOUT 600)
+  add_launch_test(test/test_dry_run_mavlink_gripper.py TIMEOUT 600)
+  add_launch_test(test/test_dry_run_weather.py TIMEOUT 600)
   add_launch_test(test/test_dry_run_fixed_wing.py TIMEOUT 900)
 endif()
 

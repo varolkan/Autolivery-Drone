@@ -128,7 +128,12 @@ void KinematicVehicle::step(const MissionCommand & cmd, double now, double dt)
 void KinematicVehicle::step(double now, double dt)
 {
   if (vtol_ == VtolState::TransitionToFw && now - transition_start_ > 3.0) {
-    vtol_ = VtolState::Fw;
+    if (quadchute) {
+      vtol_ = VtolState::Mc;
+      ++quadchutes;
+    } else {
+      vtol_ = VtolState::Fw;
+    }
   }
   if (vtol_ == VtolState::TransitionToMc && now - transition_start_ > 3.0) {
     vtol_ = VtolState::Mc;
@@ -138,6 +143,19 @@ void KinematicVehicle::step(double now, double dt)
   if (mode == px4_mode::kOffboard && armed && now - last_setpoint_ > kStreamGap) {
     mode = px4_mode::kLoiter;
   }
+
+  const Vec3 air = windAt(now);
+  if (!air_felt_) {
+    // The wind was there before the first step; only a change in it is a gust.
+    air_ = air;
+    air_felt_ = true;
+  }
+  if (armed && !isPlane() && !onGround()) {
+    // A gust arrives faster than the position controller reacts: about half of the change
+    // in wind shows up as ground velocity before it is flown out again.
+    vel_ += (air - air_) * 0.5;
+  }
+  air_ = air;
 
   fly(dt);
 
@@ -152,7 +170,9 @@ void KinematicVehicle::step(double now, double dt)
       vel_ = {};
     }
   }
-  if (vel_.horizontalNorm() > 0.5) {
+  // A hovering vehicle points where it goes. A plane's heading is where its nose is, which
+  // in a crosswind is not where it goes (see flyPlaneToward).
+  if (!isPlane() && vel_.horizontalNorm() > 0.5) {
     heading_ = std::atan2(vel_.y, vel_.x);
   }
 
@@ -187,14 +207,15 @@ VehicleSnapshot KinematicVehicle::snapshot() const
   s.connected = connected;
   s.armed = armed;
   s.mode = mode;
-  s.position_valid = connected;
+  s.position_valid = connected && position_ok;
   s.position = pos_;
   s.velocity = vel_;
   s.yaw = heading_;
   s.landed = onGround() ? LandedState::OnGround : LandedState::InAir;
   s.vtol = vtol_;
-  s.battery = battery;
+  s.battery = connected ? battery : -1.0;
   s.payload = payload_sensor ? payload_ : PayloadState::Unknown;
+  s.weather = reported_weather;
   return s;
 }
 
@@ -209,16 +230,46 @@ bool KinematicVehicle::isPlane() const
 
 double KinematicVehicle::ground() const {return map_->groundHeight(pos_.x, pos_.y);}
 
+Vec3 KinematicVehicle::windAt(double now) const
+{
+  // Mean wind plus gusts along it: two slow sines, so runs are repeatable. They swing the
+  // wind `gust` either side of the mean (never backwards), so the mean stays the mean and
+  // the strongest gust is the mean plus `gust`.
+  const double swing =
+    0.6 * std::sin(2.0 * kPi * now / 9.0) + 0.4 * std::sin(2.0 * kPi * now / 3.7);
+  return wind + wind.normalized() * std::max(-wind.norm(), gust * swing);
+}
+
+Vec3 KinematicVehicle::reachable(const Vec3 & ground_velocity) const
+{
+  // Holding a ground velocity in moving air takes the matching airspeed, and a multirotor
+  // has only max_speed of it. Past that it gets what the wind leaves it.
+  Vec3 airspeed = ground_velocity - air_;
+  const double h = airspeed.horizontalNorm();
+  if (h > profile_.max_speed) {
+    airspeed.x *= profile_.max_speed / h;
+    airspeed.y *= profile_.max_speed / h;
+  }
+  return airspeed + air_;
+}
+
 void KinematicVehicle::flyPlaneToward(const Vec3 & target, double dt)
 {
   const Vec3 to = target - pos_;
-  const double want = to.horizontalNorm() > 1.0 ? std::atan2(to.y, to.x) : heading_;
-  const double max_rate = profile_.cruise_speed / std::max(profile_.turn_radius, 1.0);
+  const double airspeed = profile_.cruise_speed;
+  double want = heading_;
+  if (to.horizontalNorm() > 1.0) {
+    // Point the nose upwind of the course by the crab angle that cancels the crosswind, as
+    // PX4's fixed-wing guidance does with its wind estimate.
+    const double course = std::atan2(to.y, to.x);
+    const double crosswind = -air_.x * std::sin(course) + air_.y * std::cos(course);
+    want = course + std::asin(std::clamp(-crosswind / airspeed, -1.0, 1.0));
+  }
+  const double max_rate = airspeed / std::max(profile_.turn_radius, 1.0);
   const double err = std::clamp(wrapAngle(want - heading_), -max_rate * dt, max_rate * dt);
   heading_ = wrapAngle(heading_ + err);
   const double vz = std::clamp(to.z * 0.5, -profile_.max_descent_rate, profile_.max_climb_rate);
-  vel_ = {
-    std::cos(heading_) * profile_.cruise_speed, std::sin(heading_) * profile_.cruise_speed, vz};
+  vel_ = Vec3{std::cos(heading_) * airspeed, std::sin(heading_) * airspeed, vz} + air_;
 }
 
 void KinematicVehicle::approachVelocity(const Vec3 & target_vel, double dt)
@@ -250,36 +301,39 @@ void KinematicVehicle::fly(double dt)
     } else if (sp_.kind == Setpoint::Kind::Position) {
       target = clampVelocity((sp_.position - pos_) * 1.0, profile_.max_speed, climb, sink);
     }
-    approachVelocity(target, dt);
+    approachVelocity(reachable(target), dt);
   } else if (mode == px4_mode::kTakeoff) {
     heading_ = runway_heading;
     const double speed = std::max(profile_.min_speed, 5.0) * 1.2;
     vel_ = {std::cos(heading_) * speed, std::sin(heading_) * speed, climb};
+    if (!onGround()) {
+      vel_ += air_;
+    }
     if (pos_.z >= home_.z + profile_.takeoff_altitude) {
       mode = px4_mode::kLoiter;
     }
   } else if (mode == px4_mode::kLoiter) {
     if (isPlane()) {
       heading_ = wrapAngle(heading_ + profile_.cruise_speed / profile_.turn_radius * dt);
-      vel_ = {
+      vel_ = Vec3{
         std::cos(heading_) * profile_.cruise_speed, std::sin(heading_) * profile_.cruise_speed,
-        0.0};
+        0.0} + air_;
     } else {
-      approachVelocity({}, dt);
+      approachVelocity(reachable({}), dt);
     }
   } else if (mode == px4_mode::kLand) {
     if (isPlane()) {
       // PX4 fixed-wing Land mode: a circular landing around where it was entered.
       if (pos_.z - ground() > 1.0) {
         heading_ = wrapAngle(heading_ + profile_.cruise_speed / profile_.turn_radius * dt);
-        vel_ = {
+        vel_ = Vec3{
           std::cos(heading_) * profile_.cruise_speed, std::sin(heading_) * profile_.cruise_speed,
-          -2.0};
+          -2.0} + air_;
       } else {
         vel_ = {0.0, 0.0, -1.0};  // flare and roll out
       }
     } else {
-      approachVelocity({0.0, 0.0, -1.0}, dt);
+      approachVelocity(reachable({0.0, 0.0, -1.0}), dt);
     }
   } else if (mode == px4_mode::kRtl) {
     const double d = horizontalDistance(pos_, home_);
@@ -292,19 +346,19 @@ void KinematicVehicle::fly(double dt)
         vel_ = pos_.z - ground() > 1.0 ? Vec3{0.0, 0.0, -3.0} : Vec3{0.0, 0.0, -1.0};
       } else {
         heading_ = wrapAngle(heading_ + profile_.cruise_speed / profile_.turn_radius * dt);
-        vel_ = {
+        vel_ = Vec3{
           std::cos(heading_) * profile_.cruise_speed, std::sin(heading_) * profile_.cruise_speed,
-          0.0};
+          0.0} + air_;
       }
     } else if (d > 1.0) {
       const Vec3 to{home_.x - pos_.x, home_.y - pos_.y, 0.0};
-      approachVelocity(to.normalized() * std::min(profile_.cruise_speed, d), dt);
+      approachVelocity(reachable(to.normalized() * std::min(profile_.cruise_speed, d)), dt);
     } else {
-      approachVelocity({0.0, 0.0, -1.0}, dt);
+      approachVelocity(reachable({0.0, 0.0, -1.0}), dt);
     }
   } else {
     // Any other mode (a pilot took over in POSCTL, say): hold.
-    approachVelocity({}, dt);
+    approachVelocity(reachable({}), dt);
   }
 }
 

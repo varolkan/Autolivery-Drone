@@ -2,7 +2,8 @@
 
 Exercises everything the unit tests cannot: parameter loading from the shipped YAML, the
 MAVROS topic and service contract, the OFFBOARD/arming handshake over real services, the
-gripper round trip through payload_node, and the action lifecycle.
+gripper round trip through payload_node, and the action lifecycle. It is flown in a stiff
+breeze the depot's station reports, inside the quadcopter's limits.
 """
 
 import os
@@ -21,7 +22,8 @@ import rclpy  # noqa: E402
 
 @pytest.mark.launch_test
 def generate_test_description():
-    return dry_run_launch(vehicle='quadcopter')
+    return dry_run_launch(
+        vehicle='quadcopter', wind_speed=6.0, wind_direction=250.0, wind_gust=9.0)
 
 
 class TestDryRunDelivery(unittest.TestCase):
@@ -64,6 +66,9 @@ class TestDryRunDelivery(unittest.TestCase):
         self.assertLess(abs(status.position.x), 2.0)
         self.assertLess(abs(status.position.y), 2.0)
         self.assertLess(status.position.z, 0.5)
+        # The mission knew what it was flying in.
+        self.assertAlmostEqual(status.wind, 6.0, places=3)
+        self.assertAlmostEqual(status.gust, 9.0, places=3)
 
 
 @launch_testing.post_shutdown_test()

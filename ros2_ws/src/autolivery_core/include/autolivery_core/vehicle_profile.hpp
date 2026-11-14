@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include "autolivery_core/geometry.hpp"
+
 namespace autolivery_core
 {
 
@@ -63,11 +65,29 @@ struct VehicleProfile
   double max_payload_kg{1.5};
   double max_range{8000.0};        // metres of flight the battery supports with reserve
 
+  // Weather the airframe may fly in, from its manual. Outside these a delivery is refused,
+  // and one that is under way is abandoned and flown home. The wind limits are for the wind
+  // at flight height; a 10 m mast in a city reads well below it.
+  double max_wind{8.0};            // m/s, mean wind
+  double max_gust{12.0};           // m/s
+  double max_precipitation{0.1};   // mm/h; the default allows no more than a trace
+  double min_temperature{-10.0};   // deg C
+  double max_temperature{40.0};    // deg C
+
   // PX4 / simulation.
   int px4_airframe{4001};          // SYS_AUTOSTART the profile was tuned against
   std::string sim_model;           // Gazebo model name, empty if the airframe is not simulated
 
   bool canHover() const {return vehicle_class != VehicleClass::FixedWing;}
+  // Airspeed there is to work with on a cruise leg: a multirotor can lean into the wind up to
+  // its top speed, anything with a wing flies its cruise airspeed.
+  double legAirspeed() const
+  {
+    return vehicle_class == VehicleClass::Multicopter ? max_speed : cruise_speed;
+  }
+  // Ground speed to expect on a cruise leg along `course` (unit, horizontal) in a mean wind
+  // `wind` (the way the air is moving). Never less than 1 m/s, so that a leg always has an end.
+  double groundSpeed(const Vec3 & course, const Vec3 & wind) const;
 };
 
 VehicleClass parseVehicleClass(const std::string & text);

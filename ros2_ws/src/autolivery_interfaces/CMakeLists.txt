@@ -12,6 +12,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ObstacleArray.msg"
   "msg/PayloadState.msg"
   "msg/MissionStatus.msg"
+  "msg/Weather.msg"
   "srv/PlanPath.srv"
   "action/Deliver.action"
   DEPENDENCIES geometry_msgs nav_msgs std_msgs

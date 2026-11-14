@@ -9,8 +9,12 @@
 //   * AUTO.TAKEOFF drops into AUTO.LOITER when the takeoff altitude is reached
 //   * fixed-wings fly at constant airspeed and cannot turn tighter than their radius; their
 //     AUTO.LAND is a circular landing, and their AUTO.RTL loiters over home without landing
-//   * VTOL transitions take time, and back-transitions shed airspeed
-// It is not a flight dynamics model: there is no attitude, no wind, no drag.
+//   * VTOL transitions take time, and back-transitions shed airspeed; with `quadchute` set a
+//     front transition times out and falls back to multicopter, as PX4's quad-chute does
+//   * wind: a hovering vehicle holds its ground velocity only while that takes no more
+//     airspeed than it has, and is nudged by gusts; a plane flies its airspeed through the
+//     moving air, crabbing to hold its course, so its ground speed is whatever is left
+// It is not a flight dynamics model: there is no attitude and no drag.
 
 #ifndef AUTOLIVERY_CORE__KINEMATIC_VEHICLE_HPP_
 #define AUTOLIVERY_CORE__KINEMATIC_VEHICLE_HPP_
@@ -52,11 +56,13 @@ public:
   VtolState vtol() const {return vtol_;}
   const Vec3 & position() const {return pos_;}
   const Vec3 & velocity() const {return vel_;}
+  const Vec3 & airVelocity() const {return air_;}  // the wind on the vehicle right now
   double heading() const {return heading_;}
   void place(const Vec3 & p) {pos_ = p;}
 
   // Knobs.
   bool connected{true};
+  bool position_ok{true};  // false: the link is up but no position comes through it
   double battery{1.0};
   double drain_per_s{0.0};
   bool gripper_stuck{false};
@@ -64,7 +70,13 @@ public:
   std::string mode{"AUTO.LOITER"};
   bool armed{false};
   double runway_heading{0.0};  // rad ENU, direction of a fixed-wing AUTO.TAKEOFF roll
+  Vec3 wind;                   // m/s, world frame: the way the air is moving (the mean)
+  double gust{0.0};            // m/s the gusts swing the wind by, either side of the mean
+  // What the mission is told about the weather, as a station's report would. Not what
+  // blows -- that is `wind` -- so a test can make the two disagree.
+  std::optional<Weather> reported_weather;
   bool fixed_wing_rtl_lands{false};  // a mission landing pattern is loaded (PX4 RTL_TYPE 1)
+  bool quadchute{false};  // front transitions time out and it is a multicopter again
 
   // What happened.
   std::vector<Vec3> trajectory;
@@ -73,10 +85,13 @@ public:
   std::optional<Vec3> release_velocity;
   int release_commands{0};
   bool saw_fixed_wing{false};
+  int quadchutes{0};
 
 private:
   bool isPlane() const;
   double ground() const;
+  Vec3 windAt(double now) const;
+  Vec3 reachable(const Vec3 & ground_velocity) const;
   void flyPlaneToward(const Vec3 & target, double dt);
   void approachVelocity(const Vec3 & target_vel, double dt);
   void fly(double dt);
@@ -86,6 +101,8 @@ private:
   std::shared_ptr<const WorldMap> map_;
   Vec3 pos_;
   Vec3 vel_;
+  Vec3 air_;                   // the wind right now
+  bool air_felt_{false};
   double heading_{0.0};
   Setpoint sp_;
   double stream_start_{-1.0};

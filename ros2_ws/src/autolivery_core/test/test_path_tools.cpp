@@ -106,6 +106,23 @@ TEST(PathFollower, JoinsTheNextLegWhenItCutsTheCorner)
   EXPECT_EQ(g.update({0.0, 0.0, 0.0}, 2.0, 1.0).segment, 0u);
 }
 
+TEST(PathFollower, RouteThatDoublesBackIsFlownAllTheWayOut)
+{
+  // Out along a line and back along the same line. Standing at the start, the vehicle is
+  // exactly as close to the way back as to the way out; it must still fly out first.
+  PathFollower f;
+  f.reset({{0.0, 0.0, 30.0}, {400.0, 0.0, 30.0}, {0.0, 0.0, 30.0}});
+  for (const double x : {0.0, 1e-9, 150.0, 300.0}) {
+    const auto p = f.update({x, 0.0, 30.0}, 50.0, 20.0);
+    EXPECT_EQ(p.segment, 0u) << "at x = " << x;
+    EXPECT_FALSE(p.finished);
+    EXPECT_GT(p.carrot.x, x);
+  }
+  EXPECT_EQ(f.update({395.0, 0.0, 30.0}, 50.0, 20.0).segment, 1u);
+  EXPECT_FALSE(f.update({200.0, 0.0, 30.0}, 50.0, 20.0).finished);
+  EXPECT_TRUE(f.update({10.0, 0.0, 30.0}, 50.0, 20.0).finished);
+}
+
 TEST(PathFollower, NeverGoesBackwardsAndHandlesDegeneratePaths)
 {
   PathFollower f;

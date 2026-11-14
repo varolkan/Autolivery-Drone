@@ -6,6 +6,11 @@ payload_node publishes on the detach topic; then the parcel is an ordinary rigid
 falls, so a hover release, a winch "release" and a fixed-wing air drop all end with the
 parcel where physics puts it.
 
+Wind: planes and VTOLs fly in the world's wind through their own aerodynamics (PX4's
+LiftDrag surfaces work in the moving air). A multirotor model has none, so for it the
+wrapper turns on Gazebo's wind drag on the airframe (see WIND_DRAG_FACTOR in
+generate_world.py); without it an x500 hovers in a gale as if nothing were blowing.
+
 Parcels are sized and placed per airframe so they fit the landing gear:
   x500          narrow box between the legs, clear of the skids and the belly
   standard_vtol flat box under the belly plate -- the plate is this model's landing gear,
@@ -25,12 +30,14 @@ class SimVehicle:
     parcel_size: tuple       # x, y, z metres
     parcel_mass: float       # kg
     parcel_offset: tuple     # parcel centre relative to base_link
+    wind_drag: bool = False  # give the airframe Gazebo's wind drag (models without aerodynamics)
 
 
 VEHICLES = {
     'x500': SimVehicle(
         base_model='x500', airframe=4001, base_link_height=0.24,
-        parcel_size=(0.16, 0.10, 0.12), parcel_mass=0.5, parcel_offset=(0.0, 0.0, -0.13)),
+        parcel_size=(0.16, 0.10, 0.12), parcel_mass=0.5, parcel_offset=(0.0, 0.0, -0.13),
+        wind_drag=True),
     'standard_vtol': SimVehicle(
         base_model='standard_vtol', airframe=4004, base_link_height=0.246,
         parcel_size=(0.30, 0.30, 0.06), parcel_mass=0.4, parcel_offset=(0.0, 0.0, -0.128)),
@@ -47,9 +54,10 @@ GRIPPER_TOPICS = {
 
 
 def vehicle_sdf(sim: SimVehicle, name: str, parcel_name: str, topics=GRIPPER_TOPICS) -> str:
+    wind = '\n    <enable_wind>true</enable_wind>' if sim.wind_drag else ''
     return f"""<?xml version="1.0"?>
 <sdf version="1.9">
-  <model name="{name}">
+  <model name="{name}">{wind}
     <include merge="true">
       <uri>model://{sim.base_model}</uri>
     </include>

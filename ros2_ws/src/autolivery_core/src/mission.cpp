@@ -13,6 +13,13 @@ namespace
 {
 
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+// Shortest carrot distance the path follower is pulled in to, and the share of the planned
+// clearance the straight line to the carrot has to keep (see doLeg()).
+constexpr double kMinLookahead = 2.0;
+constexpr double kCarrotClearance = 0.85;
+// s a vehicle has to stay off the spot it is holding before that counts as lost: an
+// estimator reset moves the position in one step and is flown out again in a second or two.
+constexpr double kAdriftFor = 2.0;
 
 std::string fmt(double v, int precision = 0)
 {
@@ -129,6 +136,13 @@ std::string Mission::start(
     return "vehicle is " + fmt(horizontalDistance(vehicle.position, home), 1) +
            " m from the depot pad; deliveries must start at the depot";
   }
+  if (!vehicle.weather && config_.require_weather_report) {
+    return "no current weather report, and deliveries are set to require one";
+  }
+  if (const std::string weather = weatherProblem(vehicle); !weather.empty()) {
+    return weather;
+  }
+  wind_ = vehicle.weather && vehicle.weather->wind ? vehicle.weather->wind->horizontal() : Vec3{};
 
   cruise_z_ = home.z + profile_.cruise_altitude;
   takeoff_top_ = {home.x, home.y, cruise_z_};
@@ -198,10 +212,18 @@ std::string Mission::start(
     return "planner could not reach the point above the depot";
   }
 
+  // The battery is spent on air flown through, not ground covered: a headwind stretches a
+  // leg, and a tailwind does not give the hover it saves back.
   const double route = pathLength(out.path) + pathLength(back.path) + vertical;
-  if (route > profile_.max_range) {
-    return "route is " + fmt(route) + " m but " + profile_.name + " range is " +
-           fmt(profile_.max_range) + " m";
+  double air_out = 0.0;
+  double air_back = 0.0;
+  legTime(out.path, &air_out);
+  legTime(back.path, &air_back);
+  const double air = air_out + air_back + vertical;
+  if (air > profile_.max_range) {
+    return "route is " + fmt(route) + " m" +
+           (air > route + 1.0 ? " (" + fmt(air) + " m of air in this wind)" : std::string()) +
+           " but " + profile_.name + " range is " + fmt(profile_.max_range) + " m";
   }
 
   outbound_path_ = std::move(out.path);
@@ -214,6 +236,13 @@ std::string Mission::start(
   settle_since_ = -1.0;
   first_release_ = -1.0;
   last_release_ = -1.0;
+  release_accepted_ = -1.0;
+  blind_since_ = -1.0;
+  adrift_since_ = -1.0;
+  weather_bad_since_ = -1.0;
+  last_vtol_ = vehicle.vtol;
+  plane_failed_ = false;
+  last_command_ = MissionCommand{};
   air_drop_attempt_ = 0;
   pass_missed_ = false;
   aborted_ = false;
@@ -229,10 +258,15 @@ std::string Mission::start(
   was_armed_ = vehicle.armed;
   hold_xy_ = vehicle.position_valid ? vehicle.position : home;
 
+  std::string weather = ", no weather report";
+  if (vehicle.weather) {
+    weather = vehicle.weather->wind ?
+      ", wind " + fmt(wind_.horizontalNorm(), 1) + " m/s" : std::string(", wind not reported");
+  }
   transition(
     MissionState::Preflight, now,
     "delivery to " + (request.label.empty() ? std::string("dropoff") : request.label) +
-    " accepted, route " + fmt(route) + " m");
+    " accepted, route " + fmt(route) + " m" + weather);
   return {};
 }
 
@@ -240,6 +274,35 @@ void Mission::cancel(const std::string & reason)
 {
   if (active()) {
     pending_cancel_ = reason;
+  }
+}
+
+void Mission::releaseAccepted()
+{
+  if (active() && first_release_ >= 0.0 && release_accepted_ < 0.0) {
+    release_accepted_ = last_update_;
+  }
+}
+
+void Mission::releaseFailed(const std::string & reason)
+{
+  if (!active() || first_release_ < 0.0) {
+    return;
+  }
+  const bool air_drop_pass = state_ == MissionState::Outbound &&
+    profile_.dropoff_method == DropoffMethod::AirDrop;
+  if (state_ == MissionState::Release) {
+    // Nothing is on its way out of the gripper, so nothing may be confirmed by the clock.
+    // doRelease() tries again once the retry period has passed.
+    first_release_ = -1.0;
+    release_accepted_ = -1.0;
+    event("release attempt failed (" + reason + "), will retry");
+  } else if (air_drop_pass) {
+    // Too late to retry over the target; the end of the pass decides on a go-around.
+    first_release_ = -1.0;
+    release_accepted_ = -1.0;
+    pass_missed_ = true;
+    event("release failed on this pass (" + reason + ")");
   }
 }
 
@@ -281,6 +344,9 @@ MissionCommand Mission::update(const VehicleSnapshot & v, double now)
     }
     last_position_ = v.position;
   }
+  if (v.weather && v.weather->wind) {
+    wind_ = v.weather->wind->horizontal();
+  }
 
   if (!active()) {
     // Standing down after a ground abort: make sure the motors are off, then go quiet.
@@ -313,8 +379,18 @@ MissionCommand Mission::update(const VehicleSnapshot & v, double now)
     was_armed_ = v.armed;
     return cmd;
   }
+  if (active() && checkTelemetry(v, now, cmd)) {
+    was_armed_ = v.armed;
+    return cmd;
+  }
   if (active()) {
     checkBattery(v, now, cmd);
+  }
+  if (active()) {
+    checkWeather(v, now);
+  }
+  if (active() && profile_.vehicle_class == VehicleClass::Vtol) {
+    checkPlaneFallback(v, now);
   }
 
   switch (state_) {
@@ -352,6 +428,7 @@ MissionCommand Mission::update(const VehicleSnapshot & v, double now)
     reached_mode_ = wanted_mode_;
   }
   was_armed_ = v.armed;
+  last_command_ = cmd;
   return cmd;
 }
 
@@ -377,6 +454,50 @@ bool Mission::checkExternalTakeover(const VehicleSnapshot & v, MissionCommand & 
   cmd = MissionCommand{};
   wanted_mode_.clear();
   reached_mode_.clear();
+  return true;
+}
+
+bool Mission::checkTelemetry(const VehicleSnapshot & v, double now, MissionCommand & cmd)
+{
+  if (!isAirborneState(state_)) {
+    blind_since_ = -1.0;
+    return false;
+  }
+  if (v.connected && v.position_valid) {
+    if (blind_since_ >= 0.0) {
+      event("vehicle data back after " + fmt(now - blind_since_, 1) + " s");
+      blind_since_ = -1.0;
+    }
+    return false;
+  }
+  const std::string what = v.connected ? "position from the vehicle" : "link to the vehicle";
+  if (blind_since_ < 0.0) {
+    blind_since_ = now;
+    event("no " + what + ", holding");
+  }
+  if (now - blind_since_ > config_.telemetry_timeout) {
+    fail(
+      "no " + what + " for " + fmt(config_.telemetry_timeout, 1) +
+      " s in flight; control left with the autopilot", now);
+    cmd = MissionCommand{};
+    wanted_mode_.clear();
+    reached_mode_.clear();
+    return true;
+  }
+  // Every handler steers by the vehicle's position, and the one in hand is no longer being
+  // updated. Keep the mode and the arming as they were and stop steering: a velocity setpoint
+  // becomes "stop" (the autopilot holds position on its own estimate), while a position
+  // setpoint is a fixed place the route already cleared, so it can stand. Nothing new is
+  // decided until the vehicle is back in sight.
+  cmd.mode = last_command_.mode;
+  cmd.armed = last_command_.armed;
+  cmd.vtol = last_command_.vtol;
+  cmd.setpoint = last_command_.setpoint;
+  if (cmd.setpoint.kind == Setpoint::Kind::Velocity) {
+    cmd.setpoint.velocity = {};
+    cmd.setpoint.yaw = kNaN;
+  }
+  detail_ = "no " + what + ", holding";
   return true;
 }
 
@@ -416,13 +537,70 @@ bool Mission::checkBattery(const VehicleSnapshot & v, double now, MissionCommand
   return false;
 }
 
+bool Mission::checkWeather(const VehicleSnapshot & v, double now)
+{
+  const std::string problem = weatherProblem(v);
+  if (problem.empty()) {
+    weather_bad_since_ = -1.0;
+    return false;
+  }
+  if (weather_bad_since_ < 0.0) {
+    weather_bad_since_ = now;
+  }
+  if (aborted_ || now - weather_bad_since_ < config_.weather_abort_after) {
+    return false;
+  }
+  switch (state_) {
+    case MissionState::Takeoff:
+    case MissionState::Outbound:
+    case MissionState::Descend:
+      abortToReturn(problem + ", abandoning delivery", v, now);
+      return true;
+    default:
+      // On the ground doPreflight() decides. A release under way is finished, as with a low
+      // battery, and everything after it is already the way home.
+      return false;
+  }
+}
+
+void Mission::checkPlaneFallback(const VehicleSnapshot & v, double now)
+{
+  // PX4 gives up on a front transition that does not build airspeed in time, and on plane
+  // flight that goes wrong (too low, pitched or rolled too far): it is a multicopter again
+  // and flags the fixed-wing side as failed until a reboot. That is its quad-chute. In its
+  // own missions it then flies home (COM_QC_ACT); under OFFBOARD it only warns, so reacting
+  // is up to us. Asking for plane flight again just repeats the failure, so we do not.
+  const bool was_forward = last_vtol_ == VtolState::TransitionToFw || last_vtol_ == VtolState::Fw;
+  const bool now_back = v.vtol == VtolState::Mc || v.vtol == VtolState::TransitionToMc;
+  const bool asked_for_plane = last_command_.vtol == VtolRequest::Fw;
+  const bool from_plane = last_vtol_ == VtolState::Fw;
+  last_vtol_ = v.vtol;
+  if (plane_failed_ || !was_forward || !now_back || !asked_for_plane) {
+    return;
+  }
+  plane_failed_ = true;
+  const std::string what = std::string("autopilot fell back to multicopter ") +
+    (from_plane ? "from plane flight" : "in the transition to plane flight") + " (quad-chute)";
+  if (state_ == MissionState::Outbound) {
+    abortToReturn(what + ", abandoning delivery and flying home as a multicopter", v, now);
+  } else {
+    event(what + "; flying the rest of the way as a multicopter");
+  }
+}
+
 void Mission::doPreflight(
   const VehicleSnapshot & v, double now, MissionCommand & cmd, bool relaunch)
 {
   const bool fixed_wing_takeoff =
     !relaunch && profile_.vehicle_class == VehicleClass::FixedWing;
 
+  const std::string weather = weatherProblem(v);
   if (now - state_since_ > config_.preflight_timeout) {
+    if (relaunch && !weather.empty() && !v.armed) {
+      stand_down_ = true;
+      fail(weather + "; staying landed at the dropoff", now);
+      return;
+    }
     std::string why = "vehicle not ready";
     if (v.connected && v.position_valid) {
       why = v.mode != (fixed_wing_takeoff ? px4_mode::kTakeoff : px4_mode::kOffboard) ?
@@ -437,6 +615,38 @@ void Mission::doPreflight(
   if (!v.connected || !v.position_valid) {
     ready_since_ = -1.0;
     detail_ = "waiting for vehicle connection and position estimate";
+    return;
+  }
+  // start() refuses a vehicle that is off its pad or short of battery, but only if it could
+  // see the vehicle at the time. Check again now that it can, before anything spins up.
+  if (!relaunch && !v.armed) {
+    const double off_pad = horizontalDistance(v.position, config_.home);
+    if (off_pad > 5.0) {
+      stand_down_ = true;
+      fail(
+        "vehicle is " + fmt(off_pad, 1) +
+        " m from the depot pad; deliveries must start at the depot", now);
+      return;
+    }
+    if (v.battery >= 0.0 && v.battery < config_.battery_min_start) {
+      stand_down_ = true;
+      fail(
+        "battery at " + fmt(v.battery * 100.0) + "%, need " +
+        fmt(config_.battery_min_start * 100.0) + "% to start", now);
+      return;
+    }
+  }
+  // The weather can turn between the delivery being accepted and the motors starting. At
+  // the depot that ends the delivery; at the dropoff the vehicle sits it out on the ground
+  // for as long as this state lasts, and stays there if it does not pass.
+  if (!weather.empty() && !v.armed) {
+    if (!relaunch) {
+      stand_down_ = true;
+      fail(weather, now);
+      return;
+    }
+    ready_since_ = -1.0;
+    detail_ = "waiting on the ground: " + weather;
     return;
   }
 
@@ -478,7 +688,9 @@ void Mission::doPreflight(
 void Mission::doTakeoff(const VehicleSnapshot & v, double now, MissionCommand & cmd)
 {
   cmd.armed = true;
-  if (now - state_since_ > config_.takeoff_timeout) {
+  const double timeout = verticalTimeout(
+    config_.takeoff_timeout, profile_.cruise_altitude, profile_.max_climb_rate);
+  if (now - state_since_ > timeout) {
     abortToReturn("takeoff did not reach cruise altitude in time", v, now);
     return;
   }
@@ -507,6 +719,13 @@ void Mission::doTakeoff(const VehicleSnapshot & v, double now, MissionCommand & 
   cmd.mode = px4_mode::kOffboard;
   const Vec3 target{hold_xy_.x, hold_xy_.y, cruise_z_};
   cmd.setpoint = holdAt(target);
+  if (holdLost(v, target, now)) {
+    // Carried off the pad on the way up, which only gets worse with height. Down, now.
+    emergencyLand(
+      "cannot hold position in the climb-out (" +
+      fmt(horizontalDistance(v.position, target), 1) + " m off), landing", now);
+    return;
+  }
   detail_ = "climbing to " + fmt(profile_.cruise_altitude) + " m";
   if (std::abs(v.position.z - cruise_z_) < config_.altitude_tolerance &&
     horizontalDistance(v.position, target) < 2.0 * config_.position_tolerance)
@@ -530,29 +749,65 @@ void Mission::doLeg(const VehicleSnapshot & v, double now, MissionCommand & cmd)
   }
 
   const bool plane = flyingAsPlane(v);
+  const bool vtol = profile_.vehicle_class == VehicleClass::Vtol;
+  // Anything flying as a plane cannot touch a waypoint tighter than it can turn, and needs a
+  // carrot far enough ahead to steer for.
   const double acceptance = plane ?
     std::max(profile_.acceptance_radius, profile_.turn_radius) : profile_.acceptance_radius;
   const double lookahead = plane ?
     std::max(config_.lookahead, 2.5 * profile_.turn_radius) : config_.lookahead;
-  const PathFollower::Progress p = follower_.update(v.position, lookahead, acceptance);
+  PathFollower::Progress p = follower_.update(v.position, lookahead, acceptance);
+  double reach = lookahead;
+  if (plane && vtol && !p.final_segment) {
+    // A VTOL is only ever a plane on a straight stretch (below). Its carrot stays on that
+    // stretch, so that while it is turning back into a multicopter before the corner it is
+    // not already steering round it.
+    reach = std::clamp(distance(p.projection, p.next_waypoint), config_.lookahead, lookahead);
+    p = follower_.update(v.position, reach, acceptance);
+  }
+  // The carrot is on the path, but the straight line to it is not: round a corner it cuts
+  // inside, towards whatever the path was going round. A hovering vehicle flies that line, so
+  // the carrot is pulled in until the line keeps most of the planned clearance. (A fixed-wing
+  // cannot fly a tight carrot; it has to cruise above what it would otherwise cut into.)
+  if (!plane) {
+    const double keep = kCarrotClearance * profile_.planning_clearance;
+    while (reach > kMinLookahead && !map_->segmentClear(v.position, p.carrot, keep)) {
+      reach = std::max(kMinLookahead, 0.7 * reach);
+      p = follower_.update(v.position, reach, acceptance);
+    }
+  }
   last_progress_ = p;
 
-  if (profile_.vehicle_class == VehicleClass::Vtol) {
+  if (vtol && !follower_.path().empty()) {
+    // As a plane a VTOL turns on a radius of tens of metres, and the route was planned with a
+    // hovering vehicle's clearance, so it cannot follow that route round a corner. It is a
+    // plane only along a straight stretch long enough to be worth it, with room at both ends
+    // to transition, and takes every corner as a multicopter.
+    const Vec3 & from = follower_.path()[p.segment];
+    const double stretch = distance(from, p.next_waypoint);
+    const double done = distance(from, p.projection);
     const double margin = config_.vtol_transition_margin;
-    const double along = follower_.totalLength() - p.remaining;
-    const bool long_leg = follower_.totalLength() > 2.0 * margin + 100.0;
-    cmd.vtol = long_leg && along > margin && p.remaining > margin ?
-      VtolRequest::Fw : VtolRequest::Mc;
+    cmd.vtol = !plane_failed_ && stretch > 2.0 * margin + 100.0 && done > margin &&
+      stretch - done > margin ? VtolRequest::Fw : VtolRequest::Mc;
   }
 
   const bool air_drop = leg_ == Leg::Outbound &&
     profile_.dropoff_method == DropoffMethod::AirDrop;
   if (air_drop && p.final_segment && first_release_ < 0.0 && !pass_missed_) {
     bool on_line = false;
-    if (airDropTrigger(v, &on_line)) {
+    const auto overshoot = airDropOvershoot(v, &on_line);
+    if (overshoot && *overshoot < 0.0) {
+      // A parcel let go now would land short: the release point is still ahead.
+      drop_armed_ = true;
+    } else if (overshoot && drop_armed_) {
+      // ...and now it would land on the target. Releasing only on that crossing is what keeps
+      // a vehicle that joins the line late, or is already past the target (the start of a
+      // go-around), from dropping the parcel wherever it happens to be.
+      drop_armed_ = false;
       if (on_line) {
         cmd.release = true;
         first_release_ = last_release_ = now;
+        release_accepted_ = -1.0;
         event("parcel released over " + request_.label);
       } else {
         pass_missed_ = true;
@@ -581,17 +836,17 @@ void Mission::doLeg(const VehicleSnapshot & v, double now, MissionCommand & cmd)
       return;
     }
     const bool dropped = config_.payload_feedback ?
-      v.payload == PayloadState::Released : first_release_ >= 0.0;
+      v.payload == PayloadState::Released : release_accepted_ >= 0.0;
     if (dropped) {
       result_.delivered = true;
       startLeg(Leg::Return, return_path_, now);
       return;
     }
     if (++air_drop_attempt_ < config_.air_drop_attempts) {
-      PlanResult around = planner_(v.position, air_drop_entry_);
+      PlanResult around = planGoAround(v.position);
       if (around.success) {
-        around.path.push_back(air_drop_exit_);
         first_release_ = -1.0;
+        release_accepted_ = -1.0;
         event("going around for another air-drop pass");
         startLeg(Leg::Outbound, std::move(around.path), now);
         return;
@@ -625,6 +880,9 @@ void Mission::doLeg(const VehicleSnapshot & v, double now, MissionCommand & cmd)
   double speed = std::min(
     profile_.cruise_speed,
     std::sqrt(2.0 * brake * std::max(0.0, p.remaining)));
+  // A shorter view ahead is flown slower, so a corner still comes with the same warning.
+  speed = std::min(speed, profile_.cruise_speed * reach / lookahead);
+  speed = std::min(speed, cornerSpeed(p, brake, reach));
   speed = std::max(speed, 0.5);
   Vec3 to_carrot = p.carrot - v.position;
   if (to_carrot.norm() < 0.1) {
@@ -689,11 +947,19 @@ void Mission::doDescend(const VehicleSnapshot & v, double now, MissionCommand & 
   cmd.armed = true;
   cmd.setpoint = holdAt(release_point_);
   detail_ = "descending to " + fmt(profile_.release_altitude, 1) + " m over " + request_.label;
+  if (holdLost(v, release_point_, now)) {
+    abortToReturn(
+      "cannot hold position over the dropoff (" +
+      fmt(horizontalDistance(v.position, release_point_), 1) + " m off)", v, now);
+    return;
+  }
   if (settled(v, release_point_, now)) {
     transition(MissionState::Release, now, "holding over " + request_.label);
     return;
   }
-  if (now - state_since_ > config_.descend_timeout) {
+  const double timeout = config_.settle_time + verticalTimeout(
+    config_.descend_timeout, above_drop_.z - release_point_.z, profile_.max_descent_rate);
+  if (now - state_since_ > timeout) {
     abortToReturn("could not settle over the dropoff", v, now);
   }
 }
@@ -710,32 +976,50 @@ void Mission::doRelease(const VehicleSnapshot & v, double now, MissionCommand & 
     }
   }
 
+  if (!landed && first_release_ < 0.0 && holdLost(v, release_point_, now)) {
+    abortToReturn(
+      "cannot hold position over the dropoff (" +
+      fmt(horizontalDistance(v.position, release_point_), 1) + " m off)", v, now);
+    return;
+  }
+
+  // With a sensor, the sensor decides. Without one the release is confirmed by time, counted
+  // from when the gripper acknowledged the command: a command that never got there, or that
+  // the autopilot refused, must not turn into a delivery just because time went by.
   const bool confirmed = config_.payload_feedback ?
     v.payload == PayloadState::Released :
-    first_release_ >= 0.0 && now - first_release_ >= config_.release_duration;
+    release_accepted_ >= 0.0 && now - release_accepted_ >= config_.release_duration;
   if (confirmed) {
     result_.delivered = true;
     event("parcel delivered to " + request_.label);
     transition(landed ? MissionState::Relaunch : MissionState::Ascend, now, "parcel released");
     return;
   }
-  // Without a sensor the release is confirmed by time alone, and a winch takes a while to
-  // pay out; never time out before the release could possibly have finished.
-  const double timeout = std::max(config_.release_timeout, config_.release_duration + 5.0);
+  // A winch takes a while to pay out; never time out before a release that was accepted
+  // could possibly have finished, however late in this state it was accepted.
+  double timeout = std::max(config_.release_timeout, config_.release_duration + 5.0);
+  if (!config_.payload_feedback && release_accepted_ >= 0.0) {
+    timeout = std::max(
+      timeout, release_accepted_ - state_since_ + config_.release_duration + 5.0);
+  }
   if (now - state_since_ > timeout) {
     abortToReturn("the parcel did not release", v, now);
     return;
   }
-  if (first_release_ < 0.0 ||
-    (config_.payload_feedback && now - last_release_ >= config_.release_retry_period))
-  {
+  // Command a release when none is in progress (the first one, or after a failed one), and
+  // again every retry period while a sensor still sees the parcel.
+  const bool in_progress = first_release_ >= 0.0;
+  const bool retry_due =
+    last_release_ < 0.0 || now - last_release_ >= config_.release_retry_period;
+  if (retry_due && (!in_progress || config_.payload_feedback)) {
     cmd.release = true;
-    if (first_release_ < 0.0) {
+    if (!in_progress) {
       first_release_ = now;
+      release_accepted_ = -1.0;
     }
     last_release_ = now;
   }
-  detail_ = "releasing parcel";
+  detail_ = in_progress || cmd.release ? "releasing parcel" : "release failed, retrying";
 }
 
 void Mission::doAscend(const VehicleSnapshot & v, double now, MissionCommand & cmd)
@@ -751,7 +1035,9 @@ void Mission::doAscend(const VehicleSnapshot & v, double now, MissionCommand & c
     startLeg(Leg::Return, return_path_, now);
     return;
   }
-  if (now - state_since_ > config_.takeoff_timeout) {
+  const double timeout = verticalTimeout(
+    config_.takeoff_timeout, above_drop_.z - release_point_.z, profile_.max_climb_rate);
+  if (now - state_since_ > timeout) {
     emergencyLand("could not climb back to cruise altitude", now);
   }
 }
@@ -793,8 +1079,17 @@ void Mission::doLand(const VehicleSnapshot & v, double now, MissionCommand & cmd
     transition(MissionState::Complete, now, result_.message);
     return;
   }
-  if (now - state_since_ > config_.land_timeout) {
-    fail("landing not confirmed within " + fmt(config_.land_timeout) + " s", now);
+  // The landing itself gets land_timeout; an RTL that starts far from home (no planned route,
+  // or a plane sent home from wherever it was) also has to get there first.
+  if (land_travel_ < 0.0) {
+    const Vec3 to_home = (config_.home - v.position).horizontal();
+    land_travel_ = v.position_valid ?
+      to_home.norm() / profile_.groundSpeed(to_home.normalized(), wind_) : 0.0;
+  }
+  const double timeout =
+    config_.land_timeout + (rtl ? land_travel_ * config_.leg_timeout_factor : 0.0);
+  if (now - state_since_ > timeout) {
+    fail("landing not confirmed within " + fmt(timeout) + " s", now);
   }
 }
 
@@ -875,6 +1170,7 @@ void Mission::transition(MissionState next, double now, const std::string & why)
   if (next == MissionState::Release) {
     first_release_ = -1.0;
     last_release_ = -1.0;
+    release_accepted_ = -1.0;
   }
   if (next == MissionState::Relaunch) {
     ready_since_ = -1.0;
@@ -882,6 +1178,10 @@ void Mission::transition(MissionState next, double now, const std::string & why)
   if (next == MissionState::Land || next == MissionState::Descend) {
     landing_committed_ = false;
   }
+  if (next == MissionState::Land) {
+    land_travel_ = -1.0;
+  }
+  adrift_since_ = -1.0;
   if (next != MissionState::Outbound && next != MissionState::Return) {
     avoiding_ = false;
     threat_.clear();
@@ -894,8 +1194,9 @@ void Mission::startLeg(Leg leg, Path path, double now)
   follower_.reset(std::move(path));
   last_progress_ = PathFollower::Progress{};
   last_progress_.remaining = follower_.totalLength();
-  leg_deadline_ = legDeadline(follower_.totalLength(), now);
+  leg_deadline_ = legDeadline(follower_.path(), now);
   pass_missed_ = false;
+  drop_armed_ = false;
   transition(
     leg == Leg::Outbound ? MissionState::Outbound : MissionState::Return, now,
     fmt(follower_.totalLength()) + " m, " + std::to_string(follower_.path().size()) +
@@ -964,17 +1265,127 @@ Setpoint Mission::holdAt(const Vec3 & p, double yaw) const
   return s;
 }
 
-double Mission::legDeadline(double length, double now) const
+// The fastest the vehicle may be going now and still take every corner ahead at a speed it
+// can turn at. Chasing the carrot rounds a corner on an arc about `reach` across, so the
+// sharper the turn and the shorter the reach, the slower it has to be taken; and the vehicle
+// has to start slowing down early enough to be at that speed when it gets there.
+double Mission::cornerSpeed(const PathFollower::Progress & p, double brake, double reach) const
 {
-  return now + length / profile_.cruise_speed * config_.leg_timeout_factor +
-         config_.leg_timeout_margin;
+  const Path & path = follower_.path();
+  double limit = profile_.cruise_speed;
+  if (path.size() < 3) {
+    return limit;  // no corner to take
+  }
+  const double horizon = limit * limit / (2.0 * brake);  // further off, nothing can bind yet
+  double ahead = distance(p.projection, p.next_waypoint);
+  // The way the vehicle is heading into each corner. A waypoint repeated in the route has no
+  // direction of its own, so the heading is carried across it.
+  Vec3 heading = (p.next_waypoint - path[p.segment]).normalized();
+  for (std::size_t i = p.segment + 1; i + 1 < path.size() && ahead < horizon; ++i) {
+    const Vec3 leg = path[i + 1] - path[i];
+    const double length = leg.norm();
+    if (length > 1e-6) {
+      const Vec3 next = leg / length;
+      const double half_turn = 0.5 * std::acos(std::clamp(heading.dot(next), -1.0, 1.0));
+      if (heading.norm() > 0.5 && half_turn > 1e-3) {
+        const double corner =
+          std::sqrt(profile_.max_acceleration * reach / (2.0 * std::sin(half_turn)));
+        limit = std::min(limit, std::sqrt(corner * corner + 2.0 * brake * ahead));
+      }
+      heading = next;
+    }
+    ahead += length;
+  }
+  return limit;
 }
 
-bool Mission::airDropTrigger(const VehicleSnapshot & v, bool * on_line) const
+bool Mission::holdLost(const VehicleSnapshot & v, const Vec3 & target, double now)
+{
+  // The planner keeps planning_clearance between the vehicle and everything else. A vehicle
+  // twice that far from the spot it was told to stay on, and not coming back, is being
+  // carried off by something it has no answer to -- wind past what it can lean into, mostly.
+  const double limit = std::max(6.0, 2.0 * profile_.planning_clearance);
+  if (horizontalDistance(v.position, target) <= limit) {
+    adrift_since_ = -1.0;
+    return false;
+  }
+  if (adrift_since_ < 0.0) {
+    adrift_since_ = now;
+  }
+  return now - adrift_since_ >= kAdriftFor;
+}
+
+std::string Mission::weatherProblem(const VehicleSnapshot & v) const
+{
+  if (!v.weather) {
+    return {};
+  }
+  const Weather & w = *v.weather;
+  const std::string limit = " the " + profile_.name + " limit of ";
+  if (w.wind && w.wind->horizontalNorm() > profile_.max_wind) {
+    return "wind of " + fmt(w.wind->horizontalNorm(), 1) + " m/s is over" + limit +
+           fmt(profile_.max_wind, 1) + " m/s";
+  }
+  if (w.gust > profile_.max_gust) {
+    return "gusts of " + fmt(w.gust, 1) + " m/s are over" + limit +
+           fmt(profile_.max_gust, 1) + " m/s";
+  }
+  if (w.precipitation > profile_.max_precipitation) {
+    return "precipitation of " + fmt(w.precipitation, 1) + " mm/h is over" + limit +
+           fmt(profile_.max_precipitation, 1) + " mm/h";
+  }
+  // An unreported temperature is NaN, which is neither below nor above anything.
+  if (w.temperature < profile_.min_temperature) {
+    return "temperature of " + fmt(w.temperature, 1) + " C is below" + limit +
+           fmt(profile_.min_temperature, 1) + " C";
+  }
+  if (w.temperature > profile_.max_temperature) {
+    return "temperature of " + fmt(w.temperature, 1) + " C is over" + limit +
+           fmt(profile_.max_temperature, 1) + " C";
+  }
+  return {};
+}
+
+double Mission::legTime(const Path & path, double * air_distance) const
+{
+  double time = 0.0;
+  double air = 0.0;
+  for (std::size_t i = 1; i < path.size(); ++i) {
+    const Vec3 step = path[i] - path[i - 1];
+    const Vec3 course = step.horizontal().normalized();
+    const double ground = profile_.groundSpeed(course, wind_);
+    const double t = step.norm() / ground;
+    // Air flown through at the airspeed the leg takes, and never less than cruise: time in
+    // the air costs battery even when a tailwind is doing the travelling.
+    air += t * std::max(profile_.cruise_speed, (course * ground - wind_).horizontalNorm());
+    time += t;
+  }
+  if (air_distance) {
+    *air_distance = air;
+  }
+  return time;
+}
+
+double Mission::legDeadline(const Path & path, double now) const
+{
+  return now + legTime(path) * config_.leg_timeout_factor + config_.leg_timeout_margin;
+}
+
+double Mission::verticalTimeout(double minimum, double height, double rate) const
+{
+  // The configured timeout suits the shipped cruise altitudes. A higher one (or a slower
+  // airframe) must not turn a normal climb or descent into an abort, so the deadline is never
+  // shorter than the time the height takes, with the same margin the legs get.
+  return std::max(minimum, std::max(0.0, height) / rate * config_.leg_timeout_factor + 10.0);
+}
+
+// How far past the target, along the approach line, a parcel released now would land
+// (negative: short of it). Nothing when the vehicle is too low to drop at all.
+std::optional<double> Mission::airDropOvershoot(const VehicleSnapshot & v, bool * on_line) const
 {
   const double h = v.position.z - request_.dropoff.z;
   if (h <= 0.5) {
-    return false;
+    return std::nullopt;
   }
   // Drag-free ballistic fall from the current state. Parachuted parcels need a drag model
   // (and a much shorter lead); this is correct for compact, dense parcels and for Gazebo,
@@ -989,7 +1400,7 @@ bool Mission::airDropTrigger(const VehicleSnapshot & v, bool * on_line) const
   const double ground_speed_on_line = v.velocity.horizontal().dot(air_drop_dir_);
   *on_line = cross <= config_.air_drop_max_cross_track &&
     ground_speed_on_line > 0.5 * v.velocity.horizontalNorm();
-  return along >= 0.0;
+  return along;
 }
 
 std::optional<Vec3> Mission::chooseAirDropHeading(const Vec3 & target, const Vec3 & from) const
@@ -1019,6 +1430,42 @@ std::optional<Vec3> Mission::chooseAirDropHeading(const Vec3 & target, const Vec
     }
   }
   return std::nullopt;
+}
+
+PlanResult Mission::planGoAround(const Vec3 & from) const
+{
+  // A plane at the end of a pass is on the approach line, past the target, pointing away
+  // from it. Getting back to the start of the line means a racetrack: turn off to one side,
+  // fly back parallel to the line, and turn in beyond the entry point so there is a straight
+  // run to settle on before the release. (A direct route back to the entry point doubles
+  // back along the line itself, which no plane can fly.)
+  const double radius = std::max(profile_.turn_radius, profile_.acceptance_radius);
+  const double offset = 2.5 * radius;
+  const Vec3 normal{-air_drop_dir_.y, air_drop_dir_.x, 0.0};
+  const double clearance = profile_.planning_clearance;
+  for (const double side : {1.0, -1.0}) {
+    const Vec3 abeam_exit = air_drop_exit_ + normal * (side * offset);
+    const Vec3 abeam_entry = air_drop_entry_ - air_drop_dir_ * (1.5 * radius) +
+      normal * (side * offset);
+    const Path pattern{from, abeam_exit, abeam_entry, air_drop_entry_, air_drop_exit_};
+    bool clear = true;
+    for (std::size_t i = 1; i < pattern.size() && clear; ++i) {
+      clear = map_->segmentClear(pattern[i - 1], pattern[i], clearance);
+    }
+    if (clear) {
+      PlanResult r;
+      r.success = true;
+      r.path = pattern;
+      r.message = side > 0.0 ? "left-hand pattern" : "right-hand pattern";
+      return r;
+    }
+  }
+  // No room for a pattern on either side: let the planner find a way back to the entry.
+  PlanResult r = planner_(from, air_drop_entry_);
+  if (r.success) {
+    r.path.push_back(air_drop_exit_);
+  }
+  return r;
 }
 
 }  // namespace autolivery_core

@@ -21,5 +21,10 @@
       release_altitude: 15.0
       max_payload_kg: 5.0
       max_range: 15000.0
+      max_wind: 10.0
+      max_gust: 15.0
+      max_precipitation: 0.1
+      min_temperature: -10.0
+      max_temperature: 40.0
       px4_airframe: 16001
       sim_model: ""

@@ -74,8 +74,9 @@ PlanResult RrtStarPlanner::plan(const Vec3 & start, const Vec3 & goal) const
     result.planning_time = elapsed();
     return result;
   }
-  // The start may legitimately sit inside a clearance margin (the vehicle is where it is);
-  // growing the tree from it is still safe because every new edge is checked.
+  // A start inside a clearance margin is not refused here (the vehicle is where it is), but
+  // no tree can grow from it either: every edge out of it fails the clearance check. Callers
+  // that may be handed such a start move it to free space first (see RoutePlanner).
   if (map.segmentClear(start, goal, c)) {
     result.success = true;
     result.path = {start, goal};
