@@ -66,6 +66,7 @@ def generate_launch_description():
             'planner': LaunchConfiguration('planner'),
             'use_mavros': 'false',
             'rviz': LaunchConfiguration('rviz'),
+            'simulation': 'true',
         }.items(),
     )
     return LaunchDescription([

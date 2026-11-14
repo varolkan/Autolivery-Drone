@@ -92,6 +92,12 @@ if(BUILD_TESTING)
   find_package(ament_cmake_flake8 REQUIRED)
   ament_flake8()
   find_package(launch_testing_ament_cmake REQUIRED)
+  find_package(ament_cmake_pytest REQUIRED)
+
+  # A real vehicle is only flown once the operator has accepted responsibility.
+  ament_add_pytest_test(test_operator_check test/test_operator_check.py
+    ENV AUTOLIVERY_DRONE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}
+    TIMEOUT 60)
 
   ament_add_gtest(test_city_map test/test_city_map.cpp TIMEOUT 300)
   target_link_libraries(test_city_map ${PROJECT_NAME}_common)

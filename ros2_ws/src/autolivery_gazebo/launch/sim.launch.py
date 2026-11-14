@@ -197,6 +197,7 @@ def _sim(context):
             'fcu_url': 'udp://:14540@127.0.0.1:14580',
             'use_sim_time': 'true',
             'rviz': LaunchConfiguration('rviz').perform(context),
+            'simulation': 'true',
         }.items(),
     )
 
