@@ -310,7 +310,7 @@ The format holds a real district. Maps built from open data (Overture Maps build
 - Air-drop release timing assumes a drag-free fall; parachuted parcels need a drag model.
 - Dynamic obstacles come only from `/autolivery/obstacles`; there is no onboard perception (lidar/depth) node yet.
 - Hexacopter, octocopter, coaxial and helicopter profiles have no Gazebo model; their mission logic is the multicopter path already tested in SITL.
-- Gazebo's rc_cessna has nosed over on the landing rollout (see "Verified in PX4 SITL"); the landing itself, detection and disarm are fine. A plane with more realistic landing gear in simulation, or real hardware, is needed to validate rollouts.
+- Gazebo's rc_cessna has nosed over on the landing rollout (see "Verified in PX4 SITL + Gazebo"); the landing itself, detection and disarm are fine. A plane with more realistic landing gear in simulation, or real hardware, is needed to validate rollouts.
 - The fixed-wing loiter-down point for the airstrip runway sits about 100 m west of the main (multirotor) depot at 40 m; with both fleets flying at once the two need separating in the map.
 - The mission reports success on "landed and disarmed"; it does not yet read PX4's failure-detector state, so a hard landing that still ends disarmed counts as a completed delivery.
 - `NAV_DLL_ACT` and `FW_LND_USETER` are overridden in simulation only (see "Real vehicle").
