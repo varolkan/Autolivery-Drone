@@ -2,7 +2,7 @@
 
 Autonomous parcel delivery for PX4 drones and planes, on ROS 2.
 
-Licensed under the [PolyForm Noncommercial License 1.0.0 with Additional Conditions](LICENSE.md). Commercial use and military use are both forbidden. Anyone else who shares or publishes it, or anything made with it, must credit it. Experimental and tested in simulation only: read the [safety notice](#safety-notice) before flying it.
+Licensed under the [PolyForm Noncommercial License 1.0.0 with Additional Conditions](LICENSE.md). Commercial use, military use and use in weapons are all forbidden. Anyone else who shares or publishes it, or anything made with it, must credit it. Experimental and tested in simulation only: read the [safety notice](#safety-notice) before flying it.
 
 A delivery is one action goal: the vehicle checks the weather against its limits, plans a route through the city (A* or RRT*), takes off, flies it in PX4 offboard mode through MAVROS, dodges other traffic on the way, drops the parcel (hover, winch, landing or air drop), flies home and lands. Everything is simulated in a Gazebo city generated from the same map the planner flies against.
 
@@ -290,8 +290,11 @@ This is experimental software. It has only been tested in simulation, it is not 
 Copyright (c) 2025-2026 varolkan. Licensed under the [PolyForm Noncommercial License 1.0.0 with Additional Conditions](LICENSE.md). In short (the license text is what counts):
 
 - **Permitted**: noncommercial purposes, including personal study, research, experiment and testing, hobby projects and private entertainment, and use by charitable organisations, educational institutions, public research, public safety or health and environmental protection organisations, and government institutions, except military ones.
-- **No commercial use**: nothing that earns money, or is meant to, for anyone. That includes projects funded by investors, paid for by a client or sponsored by a business, even while they are still at the research or prototype stage. Commercial use needs a separate written license from the author.
-- **No military use**: not by or for armed forces, defense ministries, military intelligence, private military companies or their contractors, and not for weapons or any other military purpose, by anyone.
-- **Credit**: anyone allowed to use it who shares, shows or publishes it, or anything made with it, must credit it as "Based on Autolivery-Drone by varolkan (https://github.com/varolkan)" and say whether they changed it. Giving credit never makes a forbidden use allowed.
+- **No commercial use**: nothing that earns money, or is meant to, for anyone, and no use by or for a business, internal use and evaluation included. That covers projects funded by investors, paid for by a client or sponsored by a business, even while they are still at the research or prototype stage. Commercial use needs a separate written license signed by the author.
+- **No military use or weapons**: not by or for armed forces (gendarmeries and national guards included), defense ministries, military intelligence, private military companies or their contractors; not for any military purpose or military-funded work; and not in any weapon, by anyone.
+- **Data mining**: training machine-learning models on it, or mining it, counts as using it.
+- **Credit**: anyone allowed to use it who shares, shows or publishes it, or anything made with it, must credit it as "Based on Autolivery-Drone by varolkan (https://github.com/varolkan)", say whether they changed it, and not suggest the author endorses them. Giving credit never makes a forbidden use allowed.
+- **Users carry the risk**: whoever uses it is solely responsible for what they do with it, and covers the author's costs if their use gets the author sued.
+- **No second chances**: commercial, military or weapons use ends the license at once, and stopping afterwards never excuses it.
 - **Passing it on**: every copy must come with the license, its Additional Conditions and the `Required Notice:` lines at the top of it, including the safety notice.
 - **No warranty, no liability**: as far as the law allows, the software comes as is, without any warranty, and the author is not liable for any damages arising from its use.

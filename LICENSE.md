@@ -1,20 +1,24 @@
 Required Notice: Copyright (c) 2025-2026 varolkan (https://github.com/varolkan)
 
-Required Notice: This software is licensed under the PolyForm Noncommercial License 1.0.0 with Additional Conditions. Commercial use and military use are both forbidden, and anyone who shares or publishes the software, or anything made with it, must credit varolkan.
+Required Notice: This software is licensed under the PolyForm Noncommercial License 1.0.0 with Additional Conditions. Commercial use, military use and use in weapons are all forbidden, and anyone who shares or publishes the software, or anything made with it, must credit varolkan.
 
 Required Notice: This software is experimental and not certified for flight. Anyone who uses it to fly a vehicle does so at their own risk and is solely responsible for operating it safely and lawfully.
 
 # Additional Conditions
 
-The software is provided to you by the licensor under the PolyForm Noncommercial License 1.0.0 below (the "License"), subject to the following Additional Conditions. They are part of the terms you must agree to under the License's Acceptance section, as both strict obligations and conditions to all your licenses. Where they conflict with the License, these Additional Conditions control.
+The software is provided to you by the licensor under the PolyForm Noncommercial License 1.0.0 below (the "License"), subject to the following Additional Conditions. They are part of the terms you must agree to under the License's Acceptance section, as both strict obligations and conditions to all your licenses. Where they conflict with the License, these Additional Conditions control. The PolyForm Project has not reviewed or endorsed them.
 
 ## No Commercial Use
 
-Without limiting other conditions in the License, the License does not grant you any license for a commercial purpose. A commercial purpose is any use that earns money, or is meant to earn money, for you or anyone else. That includes any use in or for a product, service, company or project that is funded by investors, paid for by a client or customer, or sponsored by a business, whether during research, prototyping and testing or later, and whether or not any money has changed hands yet. The Personal Uses and Noncommercial Organizations sections of the License do not permit any use for a commercial purpose.
+Without limiting other conditions in the License, the License does not grant you any license for a commercial purpose. A commercial purpose is any use that earns money, or is meant to earn money, for you or anyone else, and any use by or for a business, including by its employees and contractors acting for it, whether to sell something, to provide a service, for internal use, for evaluation or to save costs. It includes any use in or for a product, service, company or project that is funded by investors, paid for by a client or customer, or sponsored by a business, whether during research, prototyping and testing or later, and whether or not any money has changed hands yet. The Personal Uses and Noncommercial Organizations sections of the License do not permit any use for a commercial purpose. Commercial use needs a separate written license signed by the licensor.
 
-## No Military Use
+## No Military Use or Weapons
 
-Without limiting other conditions in the License, the License does not grant you any license, for any purpose, if you are, or act directly or indirectly for, an armed force, military, paramilitary group or militia, private military company, ministry or department of defense, or military intelligence service (a "military organization"), including as its contractor, supplier, representative, agent or affiliate. Nor does the License grant anyone any license for a military purpose, whoever they are and however the use is funded. A military purpose includes weapons, munitions, military vehicles and aircraft, military logistics, military reconnaissance, surveillance and targeting, and the research, development, testing, production, maintenance or sale of any of them. The Noncommercial Organizations section of the License does not apply to any military organization or military purpose.
+Without limiting other conditions in the License, the License does not grant you any license, for any purpose, if you are, or act directly or indirectly for, a military organization, including as its contractor, supplier, representative, agent or affiliate. A military organization is any armed force, military, paramilitary group or militia, private military company, ministry or department of defense, or military intelligence service, including gendarmeries, national guards and other forces with military status. Nor does the License grant anyone any license for a military purpose, whoever they are and however the use is funded. A military purpose includes any military or paramilitary activity; weapons, munitions, and military vehicles and aircraft; military logistics, reconnaissance, surveillance and targeting; any use funded, commissioned or sponsored by a military organization, or meant to supply one; and the research, development, testing, production, maintenance or sale of any of them. Nor does the License grant anyone any license to use the software in or for any weapon, or anything designed to injure or kill people. The Noncommercial Organizations section of the License does not apply to any military organization or military purpose.
+
+## Machine Learning and Data Mining
+
+Using the software, or any part of it, to train, fine-tune or evaluate a machine-learning model, or for automated text and data mining, is use of the software and is licensed only for a purpose these terms permit. For every other purpose, the licensor expressly reserves those uses, including within the meaning of Article 4(3) of Directive (EU) 2019/790.
 
 ## Credit
 
@@ -22,11 +26,23 @@ If you share, show or publish the software or any part of it, anything made or c
 
 > Based on Autolivery-Drone by varolkan (https://github.com/varolkan)
 
-and say whether you changed it. You may give the credit in any reasonable way for the medium you share in, as long as it is clear and visible. Giving credit never makes a use allowed that these Additional Conditions or the License forbid.
+and say whether you changed it. You may give the credit in any reasonable way for the medium you share in, as long as it is clear and visible and does not suggest that the licensor endorses you or your use. Giving credit never makes a use allowed that these Additional Conditions or the License forbid.
+
+## Your Risk and Responsibility
+
+You use the software at your own risk. It is experimental and not certified for flight, and you are solely responsible for what you do with it, including operating any vehicle safely and lawfully and getting any authorisation required to fly it. As far as the law allows, you will indemnify and hold harmless the licensor against any claim, damage, loss or cost, including reasonable legal fees, that arises from your use of the software or from your breaking these terms.
+
+## Immediate Termination
+
+The 32-day period in the License's Violations section does not apply to use for a commercial purpose, use for a military purpose or by a military organization, or use in or for a weapon or anything designed to injure or kill people: any of them ends all your licenses immediately. Coming into compliance never licenses or excuses any past use these terms do not permit, and does not waive any claim the licensor has for it.
 
 ## Passing These Conditions On
 
 Anyone you give a copy of any part of the software to must also get these Additional Conditions, along with the License or the URL for it.
+
+## Severability
+
+If any part of these Additional Conditions cannot be enforced, the rest stays in effect, and that part applies as far as the law allows.
 
 ---
 
