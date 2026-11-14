@@ -1,6 +1,6 @@
 Required Notice: Copyright (c) 2025-2026 varolkan (https://github.com/varolkan)
 
-Required Notice: This software is licensed under the PolyForm Noncommercial License 1.0.0 with Additional Conditions that forbid commercial use and military use and require credit to varolkan.
+Required Notice: This software is licensed under the PolyForm Noncommercial License 1.0.0 with Additional Conditions. Commercial use and military use are both forbidden, and anyone who shares or publishes the software, or anything made with it, must credit varolkan.
 
 Required Notice: This software is experimental and not certified for flight. Anyone who uses it to fly a vehicle does so at their own risk and is solely responsible for operating it safely and lawfully.
 
@@ -22,7 +22,7 @@ If you share, show or publish the software or any part of it, anything made or c
 
 > Based on Autolivery-Drone by varolkan (https://github.com/varolkan)
 
-and say whether you changed it. You may give the credit in any reasonable way for the medium you share in, as long as it is clear and visible.
+and say whether you changed it. You may give the credit in any reasonable way for the medium you share in, as long as it is clear and visible. Giving credit never makes a use allowed that these Additional Conditions or the License forbid.
 
 ## Passing These Conditions On
 
